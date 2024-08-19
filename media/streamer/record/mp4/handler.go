@@ -6,8 +6,8 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"time"
 
+	"github.com/deepch/vdk/codec/aacparser"
 	"github.com/deepch/vdk/codec/h264parser"
 	gomp4 "github.com/yapingcat/gomedia/go-mp4"
 
@@ -67,11 +67,13 @@ func (ws *cacheWriterSeeker) Seek(offset int64, whence int) (int64, error) {
 }
 
 type MP4 struct {
-	hub        *hub.Hub
-	muxer      *gomp4.Movmuxer
-	tempFile   *os.File
-	videoIndex uint32
-	audioIndex uint32
+	hub                   *hub.Hub
+	muxer                 *gomp4.Movmuxer
+	tempFile              *os.File
+	videoIndex            uint32
+	audioIndex            uint32
+	mpeg4AudioConfigBytes []byte
+	mpeg4AudioConfig      *aacparser.MPEG4AudioConfig
 }
 
 type MP4Args struct {
@@ -90,24 +92,26 @@ func (h *MP4) Start(ctx context.Context, streamID string) error {
 
 	go func() {
 		var err error
-		mp4FileName := fmt.Sprintf("%s_%s.mp4", streamID, time.Now().Format("20060102150405"))
-		mp4File, err := os.OpenFile(mp4FileName, os.O_CREATE|os.O_RDWR, 0666)
+		//mp4FileName := fmt.Sprintf("%s_%s.mp4", streamID, time.Now().Format("20060102150405"))
+		mp4File, err := os.CreateTemp("./", "*.mp4")
 		if err != nil {
 			fmt.Println(err)
 			return
 		}
-		defer mp4File.Close()
-		fmt.Println(mp4File.Seek(0, io.SeekCurrent))
-		cws := newCacheWriterSeeker(4096)
-		muxer, err := gomp4.CreateMp4Muxer(cws)
+		defer func() {
+			err := mp4File.Close()
+			if err != nil {
+				log.Error(ctx, err, "failed to close mp4 file")
+			}
+		}()
+		muxer, err := gomp4.CreateMp4Muxer(mp4File)
 		if err != nil {
 			fmt.Println(err)
 			return
 		}
-		vtid := muxer.AddVideoTrack(gomp4.MP4_CODEC_H264)
-
+		h.videoIndex = muxer.AddVideoTrack(gomp4.MP4_CODEC_H264)
+		h.audioIndex = muxer.AddAudioTrack(gomp4.MP4_CODEC_AAC)
 		h.muxer = muxer
-		h.videoIndex = vtid
 		for data := range sub {
 			//fmt.Println("@@@ MP4")
 			if data.H264Video != nil {
@@ -133,15 +137,32 @@ func (h *MP4) Start(ctx context.Context, streamID string) error {
 				}
 			}
 			if data.AACAudio != nil {
-				//fmt.Printf("MP4: %d\n", data.AACAudio.Timestamp)
+				if len(data.AACAudio.MPEG4AudioConfigBytes) > 0 {
+					fmt.Println("@@@ set mpeg4AudioConfigBytes")
+					h.mpeg4AudioConfigBytes = data.AACAudio.MPEG4AudioConfigBytes
+				}
+				if data.AACAudio.MPEG4AudioConfig != nil {
+					fmt.Println("@@@ set mpeg4AudioConfig")
+					h.mpeg4AudioConfig = data.AACAudio.MPEG4AudioConfig
+				}
+				if len(data.AACAudio.Data) > 0 && h.mpeg4AudioConfig != nil {
+					var audioData []byte
+					const (
+						aacSamples     = 1024
+						adtsHeaderSize = 7
+					)
+					adtsHeader := make([]byte, adtsHeaderSize)
+					aacparser.FillADTSHeader(adtsHeader, *h.mpeg4AudioConfig, aacSamples, len(data.AACAudio.Data))
+					audioData = append(adtsHeader, data.AACAudio.Data...)
+					err := h.muxer.Write(h.audioIndex, audioData, uint64(data.AACAudio.PTS), uint64(data.AACAudio.DTS))
+					if err != nil {
+						log.Error(ctx, err, "failed to write audio")
+					}
+
+				}
 			}
 		}
 		err = muxer.WriteTrailer()
-		if err != nil {
-			panic(err)
-		}
-		fmt.Println("video len: ", len(cws.buf))
-		_, err = mp4File.Write(cws.buf)
 		if err != nil {
 			panic(err)
 		}

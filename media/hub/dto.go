@@ -1,5 +1,7 @@
 package hub
 
+import "github.com/deepch/vdk/codec/aacparser"
+
 type FrameData struct {
 	H264Video *H264Video
 	AACAudio  *AACAudio
@@ -27,10 +29,12 @@ func (h *H264Video) RawTimestamp() int64 {
 }
 
 type AACAudio struct {
-	Timestamp      uint32
-	Data           []byte
-	CodecData      []byte
-	AudioClockRate uint32
+	Data                  []byte
+	MPEG4AudioConfigBytes []byte
+	MPEG4AudioConfig      *aacparser.MPEG4AudioConfig
+	PTS                   int64
+	DTS                   int64
+	AudioClockRate        uint32
 }
 
 type AudioCodecData struct {

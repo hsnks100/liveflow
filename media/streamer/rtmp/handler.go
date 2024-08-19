@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 
+	"github.com/deepch/vdk/codec/aacparser"
 	"github.com/deepch/vdk/codec/h264parser"
 	"github.com/pkg/errors"
 	"github.com/yutopp/go-flv"
@@ -128,12 +129,19 @@ func (h *Handler) OnAudio(timestamp uint32, payload io.Reader) error {
 	}
 	switch audio.AACPacketType {
 	case flvtag.AACPacketTypeSequenceHeader:
-		frameData.AACAudio.CodecData = flvBody.Bytes()
 		log.Infof(ctx, "AACAudio Sequence Header: %s", hex.Dump(flvBody.Bytes()))
+		codecData, err := aacparser.NewCodecDataFromMPEG4AudioConfigBytes(flvBody.Bytes())
+		if err != nil {
+			log.Error(ctx, err, "failed to NewCodecDataFromMPEG4AudioConfigBytes")
+			return err
+		}
+		frameData.AACAudio.MPEG4AudioConfig = &codecData.Config
+		frameData.AACAudio.MPEG4AudioConfigBytes = codecData.MPEG4AudioConfigBytes()
 	case flvtag.AACPacketTypeRaw:
 		frameData.AACAudio = &hub.AACAudio{
-			Timestamp: timestamp,
-			Data:      flvBody.Bytes(),
+			DTS:  int64(timestamp),
+			PTS:  int64(timestamp),
+			Data: flvBody.Bytes(),
 		}
 	}
 	h.hub.Publish(h.streamID, frameData)

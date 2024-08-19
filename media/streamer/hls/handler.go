@@ -40,8 +40,8 @@ func (h *HLS) Start(ctx context.Context, streamID string) {
 	go func() {
 		for data := range sub {
 			if data.AACAudio != nil {
-				if data.AACAudio.CodecData != nil {
-					muxer, err := h.makeLiveMuxer(data.AACAudio.CodecData)
+				if len(data.AACAudio.MPEG4AudioConfigBytes) > 0 {
+					muxer, err := h.makeLiveMuxer(data.AACAudio.MPEG4AudioConfigBytes)
 					if err != nil {
 						log.Error(ctx, err)
 					}
@@ -53,7 +53,7 @@ func (h *HLS) Start(ctx context.Context, streamID string) {
 					h.muxer = muxer
 				}
 				if h.muxer != nil {
-					h.muxer.WriteMPEG4Audio(time.Now(), time.Duration(data.AACAudio.Timestamp)*time.Millisecond, [][]byte{data.AACAudio.Data})
+					h.muxer.WriteMPEG4Audio(time.Now(), time.Duration(data.AACAudio.PTS)*time.Millisecond, [][]byte{data.AACAudio.Data})
 				}
 			}
 			if data.H264Video != nil {
