@@ -41,7 +41,7 @@ func (h *HLS) Start(ctx context.Context, streamID string) {
 		for data := range sub {
 			if data.AACAudio != nil {
 				if len(data.AACAudio.MPEG4AudioConfigBytes) > 0 {
-					muxer, err := h.makeLiveMuxer(data.AACAudio.MPEG4AudioConfigBytes)
+					muxer, err := h.makeMuxer(data.AACAudio.MPEG4AudioConfigBytes)
 					if err != nil {
 						log.Error(ctx, err)
 					}
@@ -53,13 +53,18 @@ func (h *HLS) Start(ctx context.Context, streamID string) {
 					h.muxer = muxer
 				}
 				if h.muxer != nil {
-					h.muxer.WriteMPEG4Audio(time.Now(), time.Duration(data.AACAudio.PTS)*time.Millisecond, [][]byte{data.AACAudio.Data})
+					//fmt.Println("audio time: ", time.Now(), "PTS: ", data.AACAudio.RawDTS())
+					h.muxer.WriteMPEG4Audio(time.Now(), time.Duration(data.AACAudio.DTS)*time.Millisecond, [][]byte{data.AACAudio.Data})
 				}
 			}
 			if data.H264Video != nil {
 				if h.muxer != nil {
+					//fmt.Println("video time: ", time.Now(), "PTS: ", data.H264Video.RawDTS())
 					au, _ := h264parser.SplitNALUs(data.H264Video.Data)
-					h.muxer.WriteH264(time.Now(), time.Duration(data.H264Video.RawTimestamp())*time.Millisecond, au)
+					err := h.muxer.WriteH264(time.Now(), time.Duration(data.H264Video.DTS)*time.Millisecond, au)
+					if err != nil {
+						log.Errorf(ctx, "failed to write h264: %v", err)
+					}
 				}
 			}
 		}
@@ -67,7 +72,7 @@ func (h *HLS) Start(ctx context.Context, streamID string) {
 	}()
 }
 
-func (h *HLS) makeLiveMuxer(extraData []byte) (*gohlslib.Muxer, error) {
+func (h *HLS) makeMuxer(extraData []byte) (*gohlslib.Muxer, error) {
 	var audioTrack *gohlslib.Track
 	if len(extraData) > 0 {
 		mpeg4Audio := &codecs.MPEG4Audio{}
@@ -91,7 +96,7 @@ func (h *HLS) makeLiveMuxer(extraData []byte) (*gohlslib.Muxer, error) {
 		muxer.PartDuration = 500 * time.Millisecond
 	} else {
 		muxer.Variant = gohlslib.MuxerVariantMPEGTS
-		muxer.SegmentDuration = 2 * time.Second
+		muxer.SegmentDuration = 1 * time.Second
 	}
 	return muxer, nil
 }

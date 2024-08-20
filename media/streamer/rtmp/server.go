@@ -48,10 +48,18 @@ func (r *RTMP) Serve(ctx context.Context) error {
 			}
 			return conn, &rtmp.ConnConfig{
 				Handler: h,
-				ControlState: rtmp.StreamControlStateConfig{
-					DefaultBandwidthWindowSize: 6 * 1024 * 1024 / 8,
-				},
-				Logger: nil,
+				//ControlState: rtmp.StreamControlStateConfig{
+				//	DefaultBandwidthWindowSize: 6 * 1024 * 1024 / 8,
+				//},
+				//Logger: nil,
+				SkipHandshakeVerification:               false,
+				IgnoreMessagesOnNotExistStream:          false,
+				IgnoreMessagesOnNotExistStreamThreshold: 0,
+				ReaderBufferSize:                        0,
+				WriterBufferSize:                        0,
+				ControlState:                            rtmp.StreamControlStateConfig{DefaultChunkSize: 0, MaxChunkSize: 0, MaxChunkStreams: 0, DefaultAckWindowSize: 0, MaxAckWindowSize: 0, DefaultBandwidthWindowSize: 6 * 1024 * 1024 / 8, DefaultBandwidthLimitType: 0, MaxBandwidthWindowSize: 0, MaxMessageSize: 0, MaxMessageStreams: 0},
+				Logger:                                  nil,
+				RPreset:                                 nil,
 			}
 		},
 	})

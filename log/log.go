@@ -88,3 +88,8 @@ func SetFormatter(ctx context.Context, formatter logrus.Formatter) {
 	logrus.SetFormatter(formatter)
 	getLogger(ctx).Logger.SetFormatter(formatter)
 }
+
+func SetCaller(ctx context.Context, flag bool) {
+	logrus.SetReportCaller(flag)
+	getLogger(ctx).Logger.SetReportCaller(flag)
+}

@@ -3,7 +3,6 @@ package rtmp
 import (
 	"bytes"
 	"context"
-	"encoding/hex"
 	"fmt"
 	"io"
 	"os"
@@ -122,14 +121,19 @@ func (h *Handler) OnAudio(timestamp uint32, payload io.Reader) error {
 	}
 	audio.Data = flvBody
 
+	audioClockRate := float64(flvSampleRate(audio.SoundRate))
 	frameData := hub.FrameData{
 		AACAudio: &hub.AACAudio{
-			AudioClockRate: flvSampleRate(audio.SoundRate),
+			AudioClockRate: uint32(audioClockRate),
+			//DTS:            int64(float64(timestamp) / 1000 * audioClockRate),
+			//PTS:            int64(float64(timestamp) / 1000 * audioClockRate),
+			DTS: int64(timestamp),
+			PTS: int64(timestamp),
 		},
 	}
 	switch audio.AACPacketType {
 	case flvtag.AACPacketTypeSequenceHeader:
-		log.Infof(ctx, "AACAudio Sequence Header: %s", hex.Dump(flvBody.Bytes()))
+		//log.Infof(ctx, "AACAudio Sequence Header: %s", hex.Dump(flvBody.Bytes()))
 		codecData, err := aacparser.NewCodecDataFromMPEG4AudioConfigBytes(flvBody.Bytes())
 		if err != nil {
 			log.Error(ctx, err, "failed to NewCodecDataFromMPEG4AudioConfigBytes")
@@ -138,11 +142,7 @@ func (h *Handler) OnAudio(timestamp uint32, payload io.Reader) error {
 		frameData.AACAudio.MPEG4AudioConfig = &codecData.Config
 		frameData.AACAudio.MPEG4AudioConfigBytes = codecData.MPEG4AudioConfigBytes()
 	case flvtag.AACPacketTypeRaw:
-		frameData.AACAudio = &hub.AACAudio{
-			DTS:  int64(timestamp),
-			PTS:  int64(timestamp),
-			Data: flvBody.Bytes(),
-		}
+		frameData.AACAudio.Data = flvBody.Bytes()
 	}
 	h.hub.Publish(h.streamID, frameData)
 	return nil
@@ -183,36 +183,94 @@ func (h *Handler) OnVideo(timestamp uint32, payload io.Reader) error {
 		h.hasSPS = true
 		return nil
 	case flvtag.AVCPacketTypeNALU:
-		annexB := []byte{0, 0, 0, 1}
-		nals, _ := h264parser.SplitNALUs(flvBody.Bytes())
-		for _, n := range nals {
-			sliceType, _ := h264parser.ParseSliceHeaderFromNALU(n)
-			dts := int64(timestamp)
-			pts := int64(video.CompositionTime) + dts
-			var hubSliceType hub.SliceType
-			switch sliceType {
-			case h264parser.SLICE_I:
-				hubSliceType = hub.SliceI
-			case h264parser.SLICE_P:
-				hubSliceType = hub.SliceP
-			case h264parser.SLICE_B:
-				hubSliceType = hub.SliceB
+		// update SPS PPS
+		{
+			nals, _ := h264parser.SplitNALUs(flvBody.Bytes())
+			for _, n := range nals {
+				if len(n) < 1 {
+					continue
+				}
+				nalType := n[0] & 0x1f
+				switch nalType {
+				case h264parser.NALU_SPS:
+					h.sps = make([]byte, len(n))
+					copy(h.sps, n)
+				case h264parser.NALU_PPS:
+					h.pps = make([]byte, len(n))
+					copy(h.pps, n)
+				}
 			}
+		}
+		// send video
+		{
+			var sendData []byte
+			nals, _ := h264parser.SplitNALUs(flvBody.Bytes())
+			//hasSPS := false
+			//data := make([]byte, 0)
+			startCode := []byte{0, 0, 0, 1}
+
+			for _, n := range nals {
+				if len(n) < 1 {
+					continue
+				}
+				//sliceType, _ := h264parser.ParseSliceHeaderFromNALU(n)
+				//var hubSliceType hub.SliceType
+				nalType := n[0] & 0x1f
+				switch nalType {
+				case h264parser.NALU_SPS:
+					//fmt.Println("SPS")
+					//hubSliceType = hub.SliceSPS
+					sendData = streamer.ConcatByteSlices(sendData, startCode, n)
+				case h264parser.NALU_PPS:
+					//fmt.Println("PPS")
+					//hubSliceType = hub.SlicePPS
+					sendData = streamer.ConcatByteSlices(sendData, startCode, n)
+				default:
+					sendData = streamer.ConcatByteSlices(sendData, startCode, n)
+					//if sliceType == h264parser.SLICE_I || sliceType == h264parser.SLICE_P {
+					//	data = streamer.ConcatByteSlices(data, n)
+					//} else {
+					//	sendData = streamer.ConcatByteSlices(sendData, startCode, n)
+					//}
+				}
+				//nalType := n[0] & 0x1f
+				//switch nalType {
+				//case h264parser.NALU_SPS:
+				//	fmt.Println("SPS")
+				//	//hubSliceType = hub.SliceSPS
+				//case h264parser.NALU_PPS:
+				//	fmt.Println("PPS")
+				//	//hubSliceType = hub.SlicePPS
+				//default:
+				//	//fmt.Println(hex.Dump(h.sps))
+				//	//fmt.Println("sliceType: ", sliceType.String(), len(h.sps), len(h.pps), len(n), timestamp)
+				//	//fmt.Println(hex.Dump(n[:15]))
+				//	if sliceType == h264parser.SLICE_I && !hasSPS {
+				//		sendData = streamer.ConcatByteSlices(startCode, h.sps, startCode, h.pps)
+				//		hasSPS = true
+				//	}
+				//}
+			}
+			//sendData = streamer.ConcatByteSlices(sendData, startCode, data)
+			if len(sendData) == 0 {
+				return nil
+			}
+			//fmt.Println("#", hex.Dump(sendData))
+			dts := int64(timestamp)
+			pts := (int64(video.CompositionTime) + dts)
 			h.hub.Publish(h.streamID, hub.FrameData{
 				H264Video: &hub.H264Video{
 					VideoClockRate: 90000,
-					DTS:            dts,
-					PTS:            pts,
-					Data:           streamer.ConcatByteSlices(annexB, n),
+					DTS:            dts, // * 90,
+					PTS:            pts, // * 90,
+					Data:           sendData,
 					SPS:            h.sps,
 					PPS:            h.pps,
-					SliceType:      hubSliceType,
-					CodecData:      nil,
+					//SliceType:      hubSliceType,
+					CodecData: nil,
 				},
 			})
 		}
-		//sliceTypes := parsers.ParseH264Payload(annexBs)
-		// chunkmessage 의 timestamp 는 dts 임
 	}
 	//////////////////////////
 	return nil

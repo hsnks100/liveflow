@@ -22,9 +22,10 @@ func (s SliceType) String() string {
 }
 
 const (
-	SliceI   SliceType = 0
-	SliceP   SliceType = 1
-	SliceB   SliceType = 2
-	SliceSPS SliceType = 3
-	SlicePPS SliceType = 4
+	SliceI       SliceType = 0
+	SliceP       SliceType = 1
+	SliceB       SliceType = 2
+	SliceSPS     SliceType = 3
+	SlicePPS     SliceType = 4
+	SliceUnknown SliceType = 5
 )

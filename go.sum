@@ -65,8 +65,8 @@ github.com/valyala/bytebufferpool v1.0.0 h1:GqA5TC/0021Y/b9FG4Oi9Mr3q7XYx6Kllzaw
 github.com/valyala/bytebufferpool v1.0.0/go.mod h1:6bBcMArwyJ5K/AmCkWv1jt77kVWyCJ6HpOuEn7z0Csc=
 github.com/valyala/fasttemplate v1.2.2 h1:lxLXG0uE3Qnshl9QyaK6XJxMXlQZELvChBOCmQD0Loo=
 github.com/valyala/fasttemplate v1.2.2/go.mod h1:KHLXt3tVN2HBp8eijSv/kGJopbvo7S+qRAEEKiv+SiQ=
-github.com/yapingcat/gomedia v0.0.0-20240725163034-902e6befb413 h1:irprkncs5spukh9UjEBj+Ynm/uV7RMZD7/OxpVLDiFQ=
-github.com/yapingcat/gomedia v0.0.0-20240725163034-902e6befb413/go.mod h1:WSZ59bidJOO40JSJmLqlkBJrjZCtjbKKkygEMfzY/kc=
+github.com/yapingcat/gomedia v0.0.0-20231026175559-9269ffbdaadd h1:TQZt/3SPlzpG5cNutsJBwQBbQSKB/EuuvEr9ddPJFno=
+github.com/yapingcat/gomedia v0.0.0-20231026175559-9269ffbdaadd/go.mod h1:WSZ59bidJOO40JSJmLqlkBJrjZCtjbKKkygEMfzY/kc=
 github.com/yutopp/go-amf0 v0.1.0 h1:a3UeBZG7nRF0zfvmPn2iAfNo1RGzUpHz1VyJD2oGrik=
 github.com/yutopp/go-amf0 v0.1.0/go.mod h1:QzDOBr9RV6sQh6E5GFEJROZbU0iQKijORBmprkb3FIk=
 github.com/yutopp/go-flv v0.3.1 h1:4ILK6OgCJgUNm2WOjaucWM5lUHE0+sLNPdjq3L0Xtjk=

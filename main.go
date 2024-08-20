@@ -10,13 +10,13 @@ import (
 	"mrw-clone/media/hlshub"
 	"mrw-clone/media/hub"
 	"mrw-clone/media/streamer/hls"
-	"mrw-clone/media/streamer/record/mp4"
 	"mrw-clone/media/streamer/rtmp"
 )
 
 // RTMP 받으면 자동으로 HLS 서비스 동작, 녹화 서비스까지~?
 func main() {
 	ctx := context.Background()
+	//log.SetCaller(ctx, true)
 
 	hub := hub.NewHub()
 	// ingress
@@ -43,11 +43,11 @@ func main() {
 				Hub:    hub,
 				HLSHub: hlsHub,
 			})
-			mp4 := mp4.NewMP4(mp4.MP4Args{
-				Hub: hub,
-			})
 			hls.Start(ctx, streamID)
-			mp4.Start(ctx, streamID)
+			//mp4 := mp4.NewMP4(mp4.MP4Args{
+			//	Hub: hub,
+			//})
+			//mp4.Start(ctx, streamID)
 		}
 	}()
 

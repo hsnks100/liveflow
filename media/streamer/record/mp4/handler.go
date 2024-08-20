@@ -8,7 +8,6 @@ import (
 	"os"
 
 	"github.com/deepch/vdk/codec/aacparser"
-	"github.com/deepch/vdk/codec/h264parser"
 	gomp4 "github.com/yapingcat/gomedia/go-mp4"
 
 	"mrw-clone/log"
@@ -88,11 +87,9 @@ func NewMP4(args MP4Args) *MP4 {
 
 func (h *MP4) Start(ctx context.Context, streamID string) error {
 	sub := h.hub.Subscribe(streamID)
-	//h.audioIndex = mp4Muxer.AddAudioTrack(gomp4.MP4_CODEC_AAC)
 
 	go func() {
 		var err error
-		//mp4FileName := fmt.Sprintf("%s_%s.mp4", streamID, time.Now().Format("20060102150405"))
 		mp4File, err := os.CreateTemp("./", "*.mp4")
 		if err != nil {
 			fmt.Println(err)
@@ -115,25 +112,10 @@ func (h *MP4) Start(ctx context.Context, streamID string) error {
 		for data := range sub {
 			//fmt.Println("@@@ MP4")
 			if data.H264Video != nil {
-				//fmt.Printf("MP4: %d, size: %d\n", data.H264Video.Timestamp, len(data.H264Video.Data))
-				if data.H264Video.SliceType == h264parser.SLICE_I {
-					err := h.muxer.Write(h.videoIndex, data.H264Video.SPS, uint64(data.H264Video.PTS), uint64(data.H264Video.DTS))
-					if err != nil {
-						log.Error(ctx, err, "failed to write video")
-					}
-					err = h.muxer.Write(h.videoIndex, data.H264Video.PPS, uint64(data.H264Video.PTS), uint64(data.H264Video.DTS))
-					if err != nil {
-						log.Error(ctx, err, "failed to write video")
-					}
-					err = h.muxer.Write(h.videoIndex, data.H264Video.Data, uint64(data.H264Video.PTS), uint64(data.H264Video.DTS))
-					if err != nil {
-						log.Error(ctx, err, "failed to write video")
-					}
-				} else {
-					err := h.muxer.Write(h.videoIndex, data.H264Video.Data, uint64(data.H264Video.PTS), uint64(data.H264Video.DTS))
-					if err != nil {
-						log.Error(ctx, err, "failed to write video")
-					}
+				//fmt.Println(hex.Dump(data.H264Video.Data))
+				err := h.muxer.Write(h.videoIndex, data.H264Video.Data, uint64(data.H264Video.RawPTS()), uint64(data.H264Video.RawDTS()))
+				if err != nil {
+					log.Error(ctx, err, "failed to write video")
 				}
 			}
 			if data.AACAudio != nil {
@@ -154,7 +136,7 @@ func (h *MP4) Start(ctx context.Context, streamID string) error {
 					adtsHeader := make([]byte, adtsHeaderSize)
 					aacparser.FillADTSHeader(adtsHeader, *h.mpeg4AudioConfig, aacSamples, len(data.AACAudio.Data))
 					audioData = append(adtsHeader, data.AACAudio.Data...)
-					err := h.muxer.Write(h.audioIndex, audioData, uint64(data.AACAudio.PTS), uint64(data.AACAudio.DTS))
+					err := h.muxer.Write(h.audioIndex, audioData, uint64(data.AACAudio.RawPTS()), uint64(data.AACAudio.RawDTS()))
 					if err != nil {
 						log.Error(ctx, err, "failed to write audio")
 					}
