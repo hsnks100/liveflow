@@ -69,7 +69,9 @@ type MP4 struct {
 	hub                   *hub.Hub
 	muxer                 *gomp4.Movmuxer
 	tempFile              *os.File
+	hasVideo              bool
 	videoIndex            uint32
+	hasAudio              bool
 	audioIndex            uint32
 	mpeg4AudioConfigBytes []byte
 	mpeg4AudioConfig      *aacparser.MPEG4AudioConfig
@@ -106,8 +108,6 @@ func (h *MP4) Start(ctx context.Context, streamID string) error {
 			fmt.Println(err)
 			return
 		}
-		h.videoIndex = muxer.AddVideoTrack(gomp4.MP4_CODEC_H264)
-		h.audioIndex = muxer.AddAudioTrack(gomp4.MP4_CODEC_AAC)
 		h.muxer = muxer
 		for data := range sub {
 			fmt.Println("@@@ MP4")
@@ -118,6 +118,10 @@ func (h *MP4) Start(ctx context.Context, streamID string) error {
 				fmt.Println("[MP4] H264Video: ", data.H264Video.RawDTS())
 			}
 			if data.H264Video != nil {
+				if !h.hasVideo {
+					h.hasVideo = true
+					h.videoIndex = muxer.AddVideoTrack(gomp4.MP4_CODEC_H264)
+				}
 				//fmt.Println(hex.Dump(data.H264Video.Data))
 				videoData := make([]byte, len(data.H264Video.Data))
 				copy(videoData, data.H264Video.Data)
@@ -127,6 +131,10 @@ func (h *MP4) Start(ctx context.Context, streamID string) error {
 				}
 			}
 			if data.AACAudio != nil {
+				if !h.hasAudio {
+					h.hasAudio = true
+					h.audioIndex = muxer.AddAudioTrack(gomp4.MP4_CODEC_AAC)
+				}
 				if len(data.AACAudio.MPEG4AudioConfigBytes) > 0 {
 					fmt.Println("@@@ set mpeg4AudioConfigBytes")
 					h.mpeg4AudioConfigBytes = data.AACAudio.MPEG4AudioConfigBytes

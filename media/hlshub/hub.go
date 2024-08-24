@@ -12,14 +12,14 @@ var (
 )
 
 type HLSHub struct {
-	mu sync.RWMutex
+	mu *sync.RWMutex
 	// [workID][name(low|pass)]muxer
 	hlsMuxers map[string]map[string]*gohlslib.Muxer
 }
 
 func NewHLSHub() *HLSHub {
 	return &HLSHub{
-		mu:        sync.RWMutex{},
+		mu:        &sync.RWMutex{},
 		hlsMuxers: map[string]map[string]*gohlslib.Muxer{},
 	}
 }

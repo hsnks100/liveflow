@@ -28,7 +28,8 @@ type HLSArgs struct {
 
 func NewHLS(args HLSArgs) *HLS {
 	return &HLS{
-		hub: args.Hub,
+		hub:    args.Hub,
+		hlsHub: args.HLSHub,
 	}
 }
 

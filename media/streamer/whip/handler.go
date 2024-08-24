@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"os"
 	"strings"
 
 	"github.com/labstack/echo/v4"
@@ -14,7 +13,6 @@ import (
 	"github.com/pion/rtp"
 	"github.com/pion/rtp/codecs"
 	"github.com/pion/webrtc/v3"
-	gomp4 "github.com/yapingcat/gomedia/go-mp4"
 
 	"mrw-clone/log"
 	"mrw-clone/media/hub"
@@ -150,17 +148,7 @@ func (r *WHIP) whipHandler(c echo.Context) error {
 	if _, ok := r.tracks[streamKey]; !ok {
 		r.tracks[streamKey] = []*webrtc.TrackLocalStaticRTP{videoTrack, audioTrack}
 	}
-	// Set a handler for when a new remote track starts
-	mp4File, err := os.CreateTemp("./", "*.mp4")
-	if err != nil {
-		return err
-	}
-
-	muxer, err := gomp4.CreateMp4Muxer(mp4File)
-	if err != nil {
-		return err
-	}
-	whipHandler := NewWebRTCHandler(muxer, mp4File)
+	whipHandler := NewWebRTCHandler(r.hub, streamKey)
 	peerConnection.OnICEConnectionStateChange(func(connectionState webrtc.ICEConnectionState) {
 		fmt.Printf("ICE Connection State has changed: %s\n", connectionState.String())
 		switch connectionState {
@@ -230,25 +218,22 @@ func (r *WHIP) whipHandler(c echo.Context) error {
 }
 
 type WebRTCHandler struct {
-	hub        *hub.Hub
-	muxer      *gomp4.Movmuxer
-	file       *os.File
-	videoIndex uint32
+	hub          *hub.Hub
+	streamID     string
+	timestampGen TimestampGenerator[int64]
 }
 
-func NewWebRTCHandler(muxer *gomp4.Movmuxer, file *os.File, hub *hub.Hub) *WebRTCHandler {
+func NewWebRTCHandler(hub *hub.Hub, streamID string) *WebRTCHandler {
 	ret := &WebRTCHandler{}
-	ret.file = file
-	ret.muxer = muxer
 	ret.hub = hub
-	ret.videoIndex = muxer.AddVideoTrack(gomp4.MP4_CODEC_H264)
+	ret.streamID = streamID
+	ret.timestampGen = TimestampGenerator[int64]{}
 	return ret
 }
 
 func (w *WebRTCHandler) OnClose(ctx context.Context) error {
+	w.hub.Unpublish(w.streamID)
 	fmt.Println("OnClose")
-	w.muxer.WriteTrailer()
-	w.file.Close()
 	return nil
 }
 
@@ -263,15 +248,24 @@ func (w *WebRTCHandler) OnVideo(ctx context.Context, packets []*rtp.Packet) erro
 		payload = append(payload, b...)
 	}
 
-	h264Bytes := payload
-	if len(h264Bytes) > 0 {
-		timestamp := packets[0].Timestamp
-		err := w.muxer.Write(w.videoIndex, h264Bytes, uint64(timestamp)/90, uint64(timestamp)/90)
-		if err != nil {
-			log.Error(ctx, err, "failed to write h264")
-			return err
-		}
+	if len(payload) == 0 {
+		return nil
 	}
+	pts := w.timestampGen.GetTimestamp(int64(packets[0].Timestamp))
+	w.hub.Publish(w.streamID, &hub.FrameData{
+		H264Video: &hub.H264Video{
+			PTS:            pts,
+			DTS:            pts,
+			VideoClockRate: 90000,
+			Data:           payload,
+			SPS:            nil,
+			PPS:            nil,
+			SliceType:      0,
+			CodecData:      nil,
+		},
+		AACAudio: nil,
+	})
+
 	return nil
 }
 
