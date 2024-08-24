@@ -62,55 +62,6 @@ func (r *WHIP) Serve() {
 	whipServer.Start(":5555")
 }
 
-func (r *WHIP) whepHandler(c echo.Context) error {
-	// Read the offer from HTTP Request
-	offer, err := io.ReadAll(c.Request().Body)
-	if err != nil {
-		return c.JSON(http.StatusInternalServerError, err.Error())
-	}
-	streamKey, err := r.bearerToken(c)
-	if err != nil {
-		return c.JSON(http.StatusInternalServerError, err.Error())
-	}
-
-	// Create a new RTCPeerConnection
-	peerConnection, err := webrtc.NewPeerConnection(peerConnectionConfiguration)
-	if err != nil {
-		return c.JSON(http.StatusInternalServerError, err.Error())
-	}
-
-	var rtpSenders []*webrtc.RTPSender
-	for _, track := range r.tracks[streamKey] {
-		sender, err := peerConnection.AddTrack(track)
-		if err != nil {
-			return c.JSON(http.StatusInternalServerError, err.Error())
-		}
-		rtpSenders = append(rtpSenders, sender)
-	}
-
-	// Read incoming RTCP packets
-	go func() {
-		rtcpBuf := make([]byte, 1500)
-		for {
-			for _, rtpSender := range rtpSenders {
-				if _, _, rtcpErr := rtpSender.Read(rtcpBuf); rtcpErr != nil {
-					return
-				}
-			}
-		}
-	}()
-	peerConnection.OnICEConnectionStateChange(func(connectionState webrtc.ICEConnectionState) {
-		fmt.Printf("ICE Connection State has changed: %s\n", connectionState.String())
-
-		if connectionState == webrtc.ICEConnectionStateFailed {
-			_ = peerConnection.Close()
-		}
-	})
-	// Send answer via HTTP Response
-	return writeAnswer3(c, peerConnection, offer, "/whep")
-
-}
-
 func (r *WHIP) bearerToken(c echo.Context) (string, error) {
 	bearerToken := c.Request().Header.Get("Authorization")
 	if len(bearerToken) == 0 {
@@ -212,11 +163,16 @@ func (r *WHIP) whipHandler(c echo.Context) error {
 	whipHandler := NewWebRTCHandler(muxer, mp4File)
 	peerConnection.OnICEConnectionStateChange(func(connectionState webrtc.ICEConnectionState) {
 		fmt.Printf("ICE Connection State has changed: %s\n", connectionState.String())
-		if connectionState == webrtc.ICEConnectionStateDisconnected {
+		switch connectionState {
+		case webrtc.ICEConnectionStateConnected:
+			r.hub.Notify(streamKey)
+			fmt.Println("ICE Connection State Connected")
+		case webrtc.ICEConnectionStateDisconnected:
 			whipHandler.OnClose(ctx)
 			delete(r.tracks, streamKey)
-		}
-		if connectionState == webrtc.ICEConnectionStateFailed {
+			fmt.Println("ICE Connection State Disconnected")
+		case webrtc.ICEConnectionStateFailed:
+			fmt.Println("ICE Connection State Failed")
 			_ = peerConnection.Close()
 		}
 	})
@@ -268,22 +224,23 @@ func (r *WHIP) whipHandler(c echo.Context) error {
 			}
 		}
 	})
-
 	// Send answer via HTTP Response
 	return writeAnswer3(c, peerConnection, offer, "/whip")
 
 }
 
 type WebRTCHandler struct {
+	hub        *hub.Hub
 	muxer      *gomp4.Movmuxer
 	file       *os.File
 	videoIndex uint32
 }
 
-func NewWebRTCHandler(muxer *gomp4.Movmuxer, file *os.File) *WebRTCHandler {
+func NewWebRTCHandler(muxer *gomp4.Movmuxer, file *os.File, hub *hub.Hub) *WebRTCHandler {
 	ret := &WebRTCHandler{}
 	ret.file = file
 	ret.muxer = muxer
+	ret.hub = hub
 	ret.videoIndex = muxer.AddVideoTrack(gomp4.MP4_CODEC_H264)
 	return ret
 }
@@ -322,6 +279,53 @@ func (w *WebRTCHandler) OnAudio(ctx context.Context, packets []*rtp.Packet) erro
 	return nil
 }
 
+func (r *WHIP) whepHandler(c echo.Context) error {
+	// Read the offer from HTTP Request
+	offer, err := io.ReadAll(c.Request().Body)
+	if err != nil {
+		return c.JSON(http.StatusInternalServerError, err.Error())
+	}
+	streamKey, err := r.bearerToken(c)
+	if err != nil {
+		return c.JSON(http.StatusInternalServerError, err.Error())
+	}
+
+	// Create a new RTCPeerConnection
+	peerConnection, err := webrtc.NewPeerConnection(peerConnectionConfiguration)
+	if err != nil {
+		return c.JSON(http.StatusInternalServerError, err.Error())
+	}
+
+	var rtpSenders []*webrtc.RTPSender
+	for _, track := range r.tracks[streamKey] {
+		sender, err := peerConnection.AddTrack(track)
+		if err != nil {
+			return c.JSON(http.StatusInternalServerError, err.Error())
+		}
+		rtpSenders = append(rtpSenders, sender)
+	}
+
+	// Read incoming RTCP packets
+	go func() {
+		rtcpBuf := make([]byte, 1500)
+		for {
+			for _, rtpSender := range rtpSenders {
+				if _, _, rtcpErr := rtpSender.Read(rtcpBuf); rtcpErr != nil {
+					return
+				}
+			}
+		}
+	}()
+	peerConnection.OnICEConnectionStateChange(func(connectionState webrtc.ICEConnectionState) {
+		fmt.Printf("ICE Connection State has changed: %s\n", connectionState.String())
+
+		if connectionState == webrtc.ICEConnectionStateFailed {
+			_ = peerConnection.Close()
+		}
+	})
+	// Send answer via HTTP Response
+	return writeAnswer3(c, peerConnection, offer, "/whep")
+}
 func writeAnswer3(c echo.Context, peerConnection *webrtc.PeerConnection, offer []byte, path string) error {
 	// Set the handler for ICE connection state
 
