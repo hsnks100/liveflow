@@ -11,6 +11,8 @@
 <body>
 <button onclick="window.doWHIP()">Publish</button>
 <button onclick="window.doWHEP()">Subscribe</button>
+<!-- bearer token input -->
+<input type="text" id="bearerToken" placeholder="Bearer Token" />
 <h3> Video </h3>
 <video id="videoPlayer" autoplay muted controls style="width: 500"> </video>
 
@@ -38,13 +40,14 @@
         }
 
         peerConnection.createOffer().then(offer => {
-            peerConnection.setLocalDescription(offer)
+            peerConnection.setLocalDescription(offer);
+            let bearerToken = document.getElementById('bearerToken').value;
 
             fetch(`/whep`, {
                 method: 'POST',
                 body: offer.sdp,
                 headers: {
-                    Authorization: `Bearer none`,
+                    Authorization: `Bearer ${bearerToken}`,
                     'Content-Type': 'application/sdp'
                 }
             }).then(r => r.text())

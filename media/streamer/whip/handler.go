@@ -4,23 +4,29 @@ import (
 	"context"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"net/http"
+	"os"
+	"strings"
 
-	"github.com/deepch/vdk/codec/h264parser"
 	"github.com/labstack/echo/v4"
 	"github.com/pion/interceptor"
 	"github.com/pion/interceptor/pkg/intervalpli"
 	"github.com/pion/rtp"
 	"github.com/pion/rtp/codecs"
 	"github.com/pion/webrtc/v3"
+	gomp4 "github.com/yapingcat/gomedia/go-mp4"
 
 	"mrw-clone/log"
 	"mrw-clone/media/hub"
 )
 
+var (
+	errNoStreamKey = echo.NewHTTPError(http.StatusUnauthorized, "No stream key provided")
+)
+
 type WHIP struct {
-	hub *hub.Hub
+	hub    *hub.Hub
+	tracks map[string][]*webrtc.TrackLocalStaticRTP
 }
 
 type WHIPArgs struct {
@@ -28,8 +34,8 @@ type WHIPArgs struct {
 }
 
 var (
-	videoTrack *webrtc.TrackLocalStaticRTP
-	audioTrack *webrtc.TrackLocalStaticRTP
+	//videoTrack *webrtc.TrackLocalStaticRTP
+	//audioTrack *webrtc.TrackLocalStaticRTP
 
 	peerConnectionConfiguration = webrtc.Configuration{
 		ICEServers: []webrtc.ICEServer{
@@ -41,153 +47,93 @@ var (
 )
 
 func NewWHIP(args WHIPArgs) *WHIP {
-	var err error
-	if videoTrack, err = webrtc.NewTrackLocalStaticRTP(webrtc.RTPCodecCapability{MimeType: webrtc.MimeTypeH264}, "video", "pion"); err != nil {
-		panic(err)
-	}
-	// Add Audio Track that is being written to from WHIP Session
-	audioTrack, err = webrtc.NewTrackLocalStaticRTP(webrtc.RTPCodecCapability{MimeType: webrtc.MimeTypeOpus}, "audio", "pion")
-	if err != nil {
-		panic(err)
-	}
 	return &WHIP{
-		hub: args.Hub,
+		hub:    args.Hub,
+		tracks: make(map[string][]*webrtc.TrackLocalStaticRTP),
 	}
 }
 
 func (r *WHIP) Serve() {
 	whipServer := echo.New()
 	whipServer.Static("/", ".")
-	whipServer.POST("/whip", whipHandler3)
-	whipServer.POST("/whep", whepHandler3)
+	whipServer.POST("/whip", r.whipHandler)
+	whipServer.POST("/whep", r.whepHandler)
 	//whipServer.PATCH("/whip", whipHandler)
 	whipServer.Start(":5555")
 }
 
-func whipPatchHandler(c echo.Context) error {
-	return c.NoContent(http.StatusNoContent)
-}
-func whipHandler(c echo.Context) error {
-	// Read the body of the request
-	body, err := ioutil.ReadAll(c.Request().Body)
-	if err != nil {
-		return c.String(http.StatusInternalServerError, "Failed to read request body")
-	}
-
-	// Print the received data
-	fmt.Printf("Received WHIP request:\n%s\n", string(body))
-	peerConnection, err := webrtc.NewPeerConnection(webrtc.Configuration{})
-	if err != nil {
-		panic(err)
-	}
-	// ICE Candidate가 발견되었을 때 호출될 콜백 설정
-	peerConnection.OnICECandidate(func(candidate *webrtc.ICECandidate) {
-		if candidate != nil {
-			// 발견된 ICE Candidate를 시그널링 서버를 통해 다른 피어로 전송해야 합니다.
-			fmt.Printf("New ICE Candidate found: %s\n", candidate.ToJSON().Candidate)
-		}
-	})
-	// Offer SDP 받기
-	var offerSDP string = string(body)
-
-	offer := webrtc.SessionDescription{
-		Type: webrtc.SDPTypeOffer,
-		SDP:  offerSDP,
-	}
-
-	// Offer 처리
-	err = peerConnection.SetRemoteDescription(offer)
-	if err != nil {
-		panic(err)
-	}
-
-	// Answer 생성
-	answer, err := peerConnection.CreateAnswer(nil)
-	if err != nil {
-		panic(err)
-	}
-
-	// 로컬에 Answer 설정
-	err = peerConnection.SetLocalDescription(answer)
-	if err != nil {
-		panic(err)
-	}
-
-	// Video 트랙이 추가되었을 때 호출될 콜백 설정
-	peerConnection.OnTrack(func(track *webrtc.TrackRemote, receiver *webrtc.RTPReceiver) {
-		fmt.Printf("Track has started, of type %d\n", track.PayloadType())
-
-		// 미디어 데이터를 처리하는 루프
-		for {
-			// RTP 패킷 수신
-			rtpPacket, _, readErr := track.ReadRTP()
-			if readErr != nil {
-				panic(readErr)
-			}
-
-			// RTP 패킷 처리
-			fmt.Printf("Received RTP packet with timestamp %d\n", rtpPacket.Timestamp)
-
-			// 여기서 받은 RTP 데이터를 파일로 쓰거나 다른 곳으로 전송할 수 있습니다.
-			// 예시: 비디오 데이터를 H.264 파일로 저장
-			if track.Kind() == webrtc.RTPCodecTypeVideo {
-				//saveToH264File("output.h264", rtpPacket.Payload)
-			}
-		}
-	})
-
-	// ICE 연결 상태 변경 이벤트 처리
-	peerConnection.OnICEConnectionStateChange(func(state webrtc.ICEConnectionState) {
-		fmt.Printf("ICE Connection State has changed: %s\n", state.String())
-		if state == webrtc.ICEConnectionStateConnected {
-			fmt.Println("ICE Connection Established!")
-		}
-	})
-	// Answer SDP 출력
-	fmt.Println("Generated SDP answer:")
-	fmt.Println(answer.SDP)
-
-	c.Response().Header().Set("Location", c.Request().URL.String())
-	// Respond with a 200 OK
-	return c.String(http.StatusCreated, answer.SDP)
-}
-
-func processFrame(ctx context.Context, packets []*rtp.Packet) error {
-	var h264RTPParser = &codecs.H264Packet{}
-	payload := make([]byte, 0)
-	for _, pkt := range packets {
-		b, err := h264RTPParser.Unmarshal(pkt.Payload)
-		if err != nil {
-			log.Error(ctx, err, "failed to unmarshal h264")
-		}
-		payload = append(payload, b...)
-	}
-
-	fmt.Println("h264 bytes len: ", len(payload))
-	h264Bytes := payload
-	//muxer.Write(time.Now(), time.Duration(timestamp)*time.Millisecond, h264Bytes, videoIndex)
-	if len(h264Bytes) > 0 {
-		au, _ := h264parser.SplitNALUs(h264Bytes)
-		for _, nalu := range au {
-			sliceType, _ := h264parser.ParseSliceHeaderFromNALU(nalu)
-			nalUnitType := nalu[0] & 0x1f
-			switch nalUnitType {
-			case h264parser.NALU_SPS, h264parser.NALU_PPS:
-				// SPS와 PPS는 이미 처리됨
-				fmt.Println("SPS PPS")
-			default:
-				fmt.Println("sliceType: ", sliceType, "nalUnitType: ", nalUnitType)
-			}
-		}
-	}
-	return nil
-}
-func whipHandler3(c echo.Context) error {
+func (r *WHIP) whepHandler(c echo.Context) error {
 	// Read the offer from HTTP Request
 	offer, err := io.ReadAll(c.Request().Body)
 	if err != nil {
 		return c.JSON(http.StatusInternalServerError, err.Error())
 	}
+	streamKey, err := r.bearerToken(c)
+	if err != nil {
+		return c.JSON(http.StatusInternalServerError, err.Error())
+	}
+
+	// Create a new RTCPeerConnection
+	peerConnection, err := webrtc.NewPeerConnection(peerConnectionConfiguration)
+	if err != nil {
+		return c.JSON(http.StatusInternalServerError, err.Error())
+	}
+
+	var rtpSenders []*webrtc.RTPSender
+	for _, track := range r.tracks[streamKey] {
+		sender, err := peerConnection.AddTrack(track)
+		if err != nil {
+			return c.JSON(http.StatusInternalServerError, err.Error())
+		}
+		rtpSenders = append(rtpSenders, sender)
+	}
+
+	// Read incoming RTCP packets
+	go func() {
+		rtcpBuf := make([]byte, 1500)
+		for {
+			for _, rtpSender := range rtpSenders {
+				if _, _, rtcpErr := rtpSender.Read(rtcpBuf); rtcpErr != nil {
+					return
+				}
+			}
+		}
+	}()
+	peerConnection.OnICEConnectionStateChange(func(connectionState webrtc.ICEConnectionState) {
+		fmt.Printf("ICE Connection State has changed: %s\n", connectionState.String())
+
+		if connectionState == webrtc.ICEConnectionStateFailed {
+			_ = peerConnection.Close()
+		}
+	})
+	// Send answer via HTTP Response
+	return writeAnswer3(c, peerConnection, offer, "/whep")
+
+}
+
+func (r *WHIP) bearerToken(c echo.Context) (string, error) {
+	bearerToken := c.Request().Header.Get("Authorization")
+	if len(bearerToken) == 0 {
+		return "", errNoStreamKey
+	}
+	authHeaderParts := strings.Split(bearerToken, " ")
+	if len(authHeaderParts) != 2 {
+		return "", errNoStreamKey
+	}
+	return authHeaderParts[1], nil
+}
+func (r *WHIP) whipHandler(c echo.Context) error {
+	// Read the offer from HTTP Request
+	offer, err := io.ReadAll(c.Request().Body)
+	if err != nil {
+		return c.JSON(http.StatusInternalServerError, err.Error())
+	}
+
+	streamKey, err := r.bearerToken(c)
+	if err != nil {
+		return c.JSON(http.StatusInternalServerError, err.Error())
+	}
+	fmt.Println("streamkey: ", streamKey)
 
 	// Create a MediaEngine object to configure the supported codec
 	m := &webrtc.MediaEngine{}
@@ -240,11 +186,46 @@ func whipHandler3(c echo.Context) error {
 	}
 
 	ctx := context.Background()
+	//webrtcHandler := NewWebRTCHandler()
+	videoTrack, err := webrtc.NewTrackLocalStaticRTP(webrtc.RTPCodecCapability{MimeType: webrtc.MimeTypeH264}, "video", "pion")
+	if err != nil {
+		panic(err)
+	}
+	// Add Audio Track that is being written to from WHIP Session
+	audioTrack, err := webrtc.NewTrackLocalStaticRTP(webrtc.RTPCodecCapability{MimeType: webrtc.MimeTypeOpus}, "audio", "pion")
+	if err != nil {
+		panic(err)
+	}
+	if _, ok := r.tracks[streamKey]; !ok {
+		r.tracks[streamKey] = []*webrtc.TrackLocalStaticRTP{videoTrack, audioTrack}
+	}
 	// Set a handler for when a new remote track starts
+	mp4File, err := os.CreateTemp("./", "*.mp4")
+	if err != nil {
+		return err
+	}
+
+	muxer, err := gomp4.CreateMp4Muxer(mp4File)
+	if err != nil {
+		return err
+	}
+	whipHandler := NewWebRTCHandler(muxer, mp4File)
+	peerConnection.OnICEConnectionStateChange(func(connectionState webrtc.ICEConnectionState) {
+		fmt.Printf("ICE Connection State has changed: %s\n", connectionState.String())
+		if connectionState == webrtc.ICEConnectionStateDisconnected {
+			whipHandler.OnClose(ctx)
+			delete(r.tracks, streamKey)
+		}
+		if connectionState == webrtc.ICEConnectionStateFailed {
+			_ = peerConnection.Close()
+		}
+	})
 	peerConnection.OnTrack(func(track *webrtc.TrackRemote, receiver *webrtc.RTPReceiver) {
 		fmt.Printf("Track has started, of type %s\n", track.Kind())
-		var packets []*rtp.Packet
-		currentTimestamp := uint32(0)
+		var videoPackets []*rtp.Packet
+		var audioPackets []*rtp.Packet
+		currentVideoTimestamp := uint32(0)
+		currentAudioTimestamp := uint32(0)
 		for {
 			pkt, _, err := track.ReadRTP()
 			if err != nil {
@@ -255,49 +236,94 @@ func whipHandler3(c echo.Context) error {
 			switch track.Kind() {
 			case webrtc.RTPCodecTypeVideo:
 				//fmt.Println("timestamp: ", pkt.Timestamp)
-				if len(packets) > 0 && currentTimestamp != pkt.Timestamp {
-					fmt.Println("by timestamp: ", pkt.Timestamp)
-					//processFrame(ctx, packets) // , muxer, videoIndex, audioIndex, timestampGen.GetTimestamp(packets[0].Timestamp))
-					packets = nil
+				if len(videoPackets) > 0 && currentVideoTimestamp != pkt.Timestamp {
+					whipHandler.OnVideo(ctx, videoPackets)
+					videoPackets = nil
 				}
 
-				packets = append(packets, pkt)
-				currentTimestamp = pkt.Timestamp
+				videoPackets = append(videoPackets, pkt)
+				currentVideoTimestamp = pkt.Timestamp
 				if pkt.Marker {
-					fmt.Println("by marker: ", pkt.Timestamp)
-					processFrame(ctx, packets) // , muxer, videoIndex, audioIndex, timestampGen.GetTimestamp(packets[0].Timestamp))
-					packets = nil
+					whipHandler.OnVideo(ctx, videoPackets)
+					videoPackets = nil
 				}
-
 				//fmt.Println("frame len: ", len(h264Bytes))
 				if err = videoTrack.WriteRTP(pkt); err != nil {
 					panic(err)
 				}
 			case webrtc.RTPCodecTypeAudio:
+				if len(audioPackets) > 0 && currentAudioTimestamp != pkt.Timestamp {
+					whipHandler.OnAudio(ctx, audioPackets)
+					audioPackets = nil
+				}
+				audioPackets = append(audioPackets, pkt)
+				currentAudioTimestamp = pkt.Timestamp
+				if pkt.Marker {
+					whipHandler.OnAudio(ctx, audioPackets)
+					audioPackets = nil
+				}
 				if err = audioTrack.WriteRTP(pkt); err != nil {
 					panic(err)
 				}
 			}
 		}
-		//err = muxer.WriteTrailer()
-		//if err != nil {
-		//	panic(err)
-		//}
 	})
 
 	// Send answer via HTTP Response
 	return writeAnswer3(c, peerConnection, offer, "/whip")
+
+}
+
+type WebRTCHandler struct {
+	muxer      *gomp4.Movmuxer
+	file       *os.File
+	videoIndex uint32
+}
+
+func NewWebRTCHandler(muxer *gomp4.Movmuxer, file *os.File) *WebRTCHandler {
+	ret := &WebRTCHandler{}
+	ret.file = file
+	ret.muxer = muxer
+	ret.videoIndex = muxer.AddVideoTrack(gomp4.MP4_CODEC_H264)
+	return ret
+}
+
+func (w *WebRTCHandler) OnClose(ctx context.Context) error {
+	fmt.Println("OnClose")
+	w.muxer.WriteTrailer()
+	w.file.Close()
+	return nil
+}
+
+func (w *WebRTCHandler) OnVideo(ctx context.Context, packets []*rtp.Packet) error {
+	var h264RTPParser = &codecs.H264Packet{}
+	payload := make([]byte, 0)
+	for _, pkt := range packets {
+		b, err := h264RTPParser.Unmarshal(pkt.Payload)
+		if err != nil {
+			log.Error(ctx, err, "failed to unmarshal h264")
+		}
+		payload = append(payload, b...)
+	}
+
+	h264Bytes := payload
+	if len(h264Bytes) > 0 {
+		timestamp := packets[0].Timestamp
+		err := w.muxer.Write(w.videoIndex, h264Bytes, uint64(timestamp)/90, uint64(timestamp)/90)
+		if err != nil {
+			log.Error(ctx, err, "failed to write h264")
+			return err
+		}
+	}
+	return nil
+}
+
+func (w *WebRTCHandler) OnAudio(ctx context.Context, packets []*rtp.Packet) error {
+	return nil
 }
 
 func writeAnswer3(c echo.Context, peerConnection *webrtc.PeerConnection, offer []byte, path string) error {
 	// Set the handler for ICE connection state
-	peerConnection.OnICEConnectionStateChange(func(connectionState webrtc.ICEConnectionState) {
-		fmt.Printf("ICE Connection State has changed: %s\n", connectionState.String())
-
-		if connectionState == webrtc.ICEConnectionStateFailed {
-			_ = peerConnection.Close()
-		}
-	})
 
 	if err := peerConnection.SetRemoteDescription(webrtc.SessionDescription{Type: webrtc.SDPTypeOffer, SDP: string(offer)}); err != nil {
 		return c.JSON(http.StatusInternalServerError, err.Error())
@@ -323,50 +349,4 @@ func writeAnswer3(c echo.Context, peerConnection *webrtc.PeerConnection, offer [
 
 	// Write Answer with Candidates as HTTP Response
 	return c.String(http.StatusOK, peerConnection.LocalDescription().SDP)
-}
-
-func whepHandler3(c echo.Context) error {
-	// Read the offer from HTTP Request
-	offer, err := io.ReadAll(c.Request().Body)
-	if err != nil {
-		return c.JSON(http.StatusInternalServerError, err.Error())
-	}
-
-	// Create a new RTCPeerConnection
-	peerConnection, err := webrtc.NewPeerConnection(peerConnectionConfiguration)
-	if err != nil {
-		return c.JSON(http.StatusInternalServerError, err.Error())
-	}
-
-	// Add Video Track that is being written to from WHIP Session
-	rtpSender, err := peerConnection.AddTrack(videoTrack)
-	if err != nil {
-		return c.JSON(http.StatusInternalServerError, err.Error())
-	}
-	rtpSenderAudio, err := peerConnection.AddTrack(audioTrack)
-	if err != nil {
-		return c.JSON(http.StatusInternalServerError, err.Error())
-	}
-
-	// Read incoming RTCP packets
-	go func() {
-		rtcpBuf := make([]byte, 1500)
-		for {
-			if _, _, rtcpErr := rtpSender.Read(rtcpBuf); rtcpErr != nil {
-				return
-			}
-		}
-	}()
-	// Read incoming RTCP packets for audio
-	go func() {
-		rtcpBuf := make([]byte, 1500)
-		for {
-			if _, _, rtcpErr := rtpSenderAudio.Read(rtcpBuf); rtcpErr != nil {
-				return
-			}
-		}
-	}()
-
-	// Send answer via HTTP Response
-	return writeAnswer3(c, peerConnection, offer, "/whep")
 }
