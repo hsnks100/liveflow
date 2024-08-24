@@ -8,7 +8,6 @@ import (
 
 	"github.com/bluenviron/gohlslib"
 	"github.com/bluenviron/gohlslib/pkg/codecs"
-
 	"github.com/deepch/vdk/codec/h264parser"
 
 	"mrw-clone/log"
@@ -29,13 +28,11 @@ type HLSArgs struct {
 
 func NewHLS(args HLSArgs) *HLS {
 	return &HLS{
-		hub:    args.Hub,
-		hlsHub: args.HLSHub,
+		hub: args.Hub,
 	}
 }
 
 func (h *HLS) Start(ctx context.Context, streamID string) {
-	fmt.Println("@@@ Start StreamID: ", streamID)
 	sub := h.hub.Subscribe(streamID)
 	go func() {
 		for data := range sub {
@@ -53,15 +50,16 @@ func (h *HLS) Start(ctx context.Context, streamID string) {
 					h.muxer = muxer
 				}
 				if h.muxer != nil {
-					//fmt.Println("audio time: ", time.Now(), "PTS: ", data.AACAudio.RawDTS())
-					h.muxer.WriteMPEG4Audio(time.Now(), time.Duration(data.AACAudio.DTS)*time.Millisecond, [][]byte{data.AACAudio.Data})
+					audioData := make([]byte, len(data.AACAudio.Data))
+					copy(audioData, data.AACAudio.Data)
+					h.muxer.WriteMPEG4Audio(time.Now(), time.Duration(data.AACAudio.RawDTS())*time.Millisecond, [][]byte{audioData})
 				}
 			}
 			if data.H264Video != nil {
 				if h.muxer != nil {
 					//fmt.Println("video time: ", time.Now(), "PTS: ", data.H264Video.RawDTS())
 					au, _ := h264parser.SplitNALUs(data.H264Video.Data)
-					err := h.muxer.WriteH264(time.Now(), time.Duration(data.H264Video.DTS)*time.Millisecond, au)
+					err := h.muxer.WriteH264(time.Now(), time.Duration(data.H264Video.RawDTS())*time.Millisecond, au)
 					if err != nil {
 						log.Errorf(ctx, "failed to write h264: %v", err)
 					}

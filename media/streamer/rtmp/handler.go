@@ -18,7 +18,6 @@ import (
 
 	"mrw-clone/log"
 	"mrw-clone/media/hub"
-	"mrw-clone/media/streamer"
 )
 
 type Handler struct {
@@ -125,10 +124,8 @@ func (h *Handler) OnAudio(timestamp uint32, payload io.Reader) error {
 	frameData := hub.FrameData{
 		AACAudio: &hub.AACAudio{
 			AudioClockRate: uint32(audioClockRate),
-			//DTS:            int64(float64(timestamp) / 1000 * audioClockRate),
-			//PTS:            int64(float64(timestamp) / 1000 * audioClockRate),
-			DTS: int64(timestamp),
-			PTS: int64(timestamp),
+			DTS:            int64(float64(timestamp) * (audioClockRate / 1000.0)),
+			PTS:            int64(float64(timestamp) * (audioClockRate / 1000.0)),
 		},
 	}
 	switch audio.AACPacketType {
@@ -144,136 +141,166 @@ func (h *Handler) OnAudio(timestamp uint32, payload io.Reader) error {
 	case flvtag.AACPacketTypeRaw:
 		frameData.AACAudio.Data = flvBody.Bytes()
 	}
-	h.hub.Publish(h.streamID, frameData)
+	h.hub.Publish(h.streamID, &frameData)
 	return nil
 }
 
 func (h *Handler) OnVideo(timestamp uint32, payload io.Reader) error {
 	ctx := context.Background()
-	var buf bytes.Buffer
-	_, err := io.Copy(&buf, payload)
+
+	// payload 데이터를 버퍼에 읽어오기
+	payloadBuffer, err := h.readPayload(payload)
 	if err != nil {
-		log.Error(ctx, err, "failed to read audio")
-		return err
-	}
-	var video flvtag.VideoData
-	if err := flvtag.DecodeVideoData(bytes.NewBuffer(buf.Bytes()), &video); err != nil {
+		log.Error(ctx, err, "Failed to read video payload")
 		return err
 	}
 
-	flvBody := new(bytes.Buffer)
-	if _, err := io.Copy(flvBody, video.Data); err != nil {
+	// VideoData 구조체로 디코딩
+	videoData, err := h.decodeVideoData(payloadBuffer)
+	if err != nil {
 		return err
 	}
-	video.Data = flvBody
-	switch video.AVCPacketType {
+
+	// FLV 바디 데이터를 처리하고 대응하는 작업 수행
+	return h.processVideoData(ctx, timestamp, videoData)
+}
+
+// payload 데이터를 읽어와서 버퍼에 저장하는 함수
+func (h *Handler) readPayload(payload io.Reader) (*bytes.Buffer, error) {
+	var payloadBuffer bytes.Buffer
+	_, err := io.Copy(&payloadBuffer, payload)
+	if err != nil {
+		return nil, err
+	}
+	return &payloadBuffer, nil
+}
+
+// payload 데이터를 VideoData 구조체로 디코딩하는 함수
+func (h *Handler) decodeVideoData(payloadBuffer *bytes.Buffer) (*flvtag.VideoData, error) {
+	var videoData flvtag.VideoData
+	err := flvtag.DecodeVideoData(bytes.NewBuffer(payloadBuffer.Bytes()), &videoData)
+	if err != nil {
+		return nil, err
+	}
+	return &videoData, nil
+}
+
+// VideoData에 따라 데이터를 처리하는 함수
+func (h *Handler) processVideoData(ctx context.Context, timestamp uint32, videoData *flvtag.VideoData) error {
+	flvBodyBuffer := new(bytes.Buffer)
+	if _, err := io.Copy(flvBodyBuffer, videoData.Data); err != nil {
+		return err
+	}
+	videoData.Data = flvBodyBuffer
+
+	switch videoData.AVCPacketType {
 	case flvtag.AVCPacketTypeSequenceHeader:
-		log.Info(ctx, "Received AVCPacketTypeSequenceHeader")
-		seqHeader, err := h264parser.NewCodecDataFromAVCDecoderConfRecord(flvBody.Bytes())
-		if err != nil {
-			log.Error(ctx, err, "Failed to NewCodecDataFromAVCDecoderConfRecord")
-		} else {
-			h.width = seqHeader.Width()
-			h.height = seqHeader.Height()
-			h.sps = make([]byte, len(seqHeader.SPS()))
-			copy(h.sps, seqHeader.SPS())
-			h.pps = make([]byte, len(seqHeader.PPS()))
-			copy(h.pps, seqHeader.PPS())
-		}
-		h.hasSPS = true
-		return nil
-	case flvtag.AVCPacketTypeNALU:
-		// update SPS PPS
-		{
-			nals, _ := h264parser.SplitNALUs(flvBody.Bytes())
-			for _, n := range nals {
-				if len(n) < 1 {
-					continue
-				}
-				nalType := n[0] & 0x1f
-				switch nalType {
-				case h264parser.NALU_SPS:
-					h.sps = make([]byte, len(n))
-					copy(h.sps, n)
-				case h264parser.NALU_PPS:
-					h.pps = make([]byte, len(n))
-					copy(h.pps, n)
-				}
-			}
-		}
-		// send video
-		{
-			var sendData []byte
-			nals, _ := h264parser.SplitNALUs(flvBody.Bytes())
-			//hasSPS := false
-			//data := make([]byte, 0)
-			startCode := []byte{0, 0, 0, 1}
+		return h.handleSequenceHeader(ctx, flvBodyBuffer)
 
-			for _, n := range nals {
-				if len(n) < 1 {
-					continue
-				}
-				//sliceType, _ := h264parser.ParseSliceHeaderFromNALU(n)
-				//var hubSliceType hub.SliceType
-				nalType := n[0] & 0x1f
-				switch nalType {
-				case h264parser.NALU_SPS:
-					//fmt.Println("SPS")
-					//hubSliceType = hub.SliceSPS
-					sendData = streamer.ConcatByteSlices(sendData, startCode, n)
-				case h264parser.NALU_PPS:
-					//fmt.Println("PPS")
-					//hubSliceType = hub.SlicePPS
-					sendData = streamer.ConcatByteSlices(sendData, startCode, n)
-				default:
-					sendData = streamer.ConcatByteSlices(sendData, startCode, n)
-					//if sliceType == h264parser.SLICE_I || sliceType == h264parser.SLICE_P {
-					//	data = streamer.ConcatByteSlices(data, n)
-					//} else {
-					//	sendData = streamer.ConcatByteSlices(sendData, startCode, n)
-					//}
-				}
-				//nalType := n[0] & 0x1f
-				//switch nalType {
-				//case h264parser.NALU_SPS:
-				//	fmt.Println("SPS")
-				//	//hubSliceType = hub.SliceSPS
-				//case h264parser.NALU_PPS:
-				//	fmt.Println("PPS")
-				//	//hubSliceType = hub.SlicePPS
-				//default:
-				//	//fmt.Println(hex.Dump(h.sps))
-				//	//fmt.Println("sliceType: ", sliceType.String(), len(h.sps), len(h.pps), len(n), timestamp)
-				//	//fmt.Println(hex.Dump(n[:15]))
-				//	if sliceType == h264parser.SLICE_I && !hasSPS {
-				//		sendData = streamer.ConcatByteSlices(startCode, h.sps, startCode, h.pps)
-				//		hasSPS = true
-				//	}
-				//}
-			}
-			//sendData = streamer.ConcatByteSlices(sendData, startCode, data)
-			if len(sendData) == 0 {
-				return nil
-			}
-			//fmt.Println("#", hex.Dump(sendData))
-			dts := int64(timestamp)
-			pts := (int64(video.CompositionTime) + dts)
-			h.hub.Publish(h.streamID, hub.FrameData{
-				H264Video: &hub.H264Video{
-					VideoClockRate: 90000,
-					DTS:            dts, // * 90,
-					PTS:            pts, // * 90,
-					Data:           sendData,
-					SPS:            h.sps,
-					PPS:            h.pps,
-					//SliceType:      hubSliceType,
-					CodecData: nil,
-				},
-			})
+	case flvtag.AVCPacketTypeNALU:
+		return h.handleNALU(ctx, timestamp, videoData.CompositionTime, flvBodyBuffer)
+	}
+
+	return nil
+}
+
+// AVCPacketTypeSequenceHeader를 처리하는 함수
+func (h *Handler) handleSequenceHeader(ctx context.Context, flvBodyBuffer *bytes.Buffer) error {
+	seqHeader, err := h264parser.NewCodecDataFromAVCDecoderConfRecord(flvBodyBuffer.Bytes())
+	if err != nil {
+		log.Error(ctx, err, "Failed to parse AVCDecoderConfigurationRecord")
+		return err
+	}
+
+	h.width = seqHeader.Width()
+	h.height = seqHeader.Height()
+	h.sps = append([]byte{}, seqHeader.SPS()...)
+	h.pps = append([]byte{}, seqHeader.PPS()...)
+	h.hasSPS = true
+
+	log.Info(ctx, "Received AVCPacketTypeSequenceHeader")
+	return nil
+}
+
+// AVCPacketTypeNALU를 처리하는 함수
+func (h *Handler) handleNALU(ctx context.Context, timestamp uint32, compositionTime int32, flvBodyBuffer *bytes.Buffer) error {
+	h.updateSPSPPS(flvBodyBuffer.Bytes())
+
+	videoDataToSend := h.prepareVideoData(flvBodyBuffer.Bytes())
+	if len(videoDataToSend) == 0 {
+		return nil
+	}
+
+	h.publishVideoData(timestamp, compositionTime, videoDataToSend)
+	return nil
+}
+
+// NALU 데이터를 분석하여 SPS, PPS 정보를 업데이트하는 함수
+func (h *Handler) updateSPSPPS(naluData []byte) {
+	nalus, _ := h264parser.SplitNALUs(naluData)
+	for _, nalu := range nalus {
+		if len(nalu) < 1 {
+			continue
+		}
+		nalUnitType := nalu[0] & 0x1f
+		switch nalUnitType {
+		case h264parser.NALU_SPS:
+			h.sps = append([]byte{}, nalu...)
+		case h264parser.NALU_PPS:
+			h.pps = append([]byte{}, nalu...)
 		}
 	}
-	//////////////////////////
-	return nil
+}
+
+// NALU 데이터를 준비하여 전송할 비디오 데이터를 생성하는 함수
+func (h *Handler) prepareVideoData(naluData []byte) []byte {
+	var videoDataToSend []byte
+	hasSPSInData := false
+	startCode := []byte{0, 0, 0, 1}
+
+	nalus, _ := h264parser.SplitNALUs(naluData)
+	for _, nalu := range nalus {
+		if len(nalu) < 1 {
+			continue
+		}
+		sliceType, _ := h264parser.ParseSliceHeaderFromNALU(nalu)
+		nalUnitType := nalu[0] & 0x1f
+		switch nalUnitType {
+		case h264parser.NALU_SPS, h264parser.NALU_PPS:
+			// SPS와 PPS는 이미 처리됨
+		default:
+			// I-프레임일 때 SPS, PPS 추가
+			if sliceType == h264parser.SLICE_I && !hasSPSInData {
+				videoDataToSend = append(videoDataToSend, startCode...)
+				videoDataToSend = append(videoDataToSend, h.sps...)
+				videoDataToSend = append(videoDataToSend, startCode...)
+				videoDataToSend = append(videoDataToSend, h.pps...)
+				hasSPSInData = true
+			}
+			videoDataToSend = append(videoDataToSend, startCode...)
+			videoDataToSend = append(videoDataToSend, nalu...)
+		}
+	}
+	return videoDataToSend
+}
+
+// 비디오 데이터를 Hub에 전송하는 함수
+func (h *Handler) publishVideoData(timestamp uint32, compositionTime int32, videoDataToSend []byte) {
+	dts := int64(timestamp)
+	pts := int64(compositionTime) + dts
+
+	fmt.Println("[rtmp] dts: ", dts)
+	h.hub.Publish(h.streamID, &hub.FrameData{
+		H264Video: &hub.H264Video{
+			VideoClockRate: 90000,
+			DTS:            dts * 90,
+			PTS:            pts * 90,
+			Data:           videoDataToSend,
+			SPS:            h.sps,
+			PPS:            h.pps,
+			CodecData:      nil,
+		},
+	})
 }
 
 func (h *Handler) OnClose() {

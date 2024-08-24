@@ -34,14 +34,14 @@ func (h *H264Video) RawPTS() int64 {
 	if h.VideoClockRate == 0 {
 		return h.PTS
 	} else {
-		return int64(float64(h.PTS) / float64(h.VideoClockRate) * 1000)
+		return int64(float64(h.PTS) / float64(h.VideoClockRate/1000.0))
 	}
 }
 func (h *H264Video) RawDTS() int64 {
 	if h.VideoClockRate == 0 {
-		return h.PTS
+		return h.DTS
 	} else {
-		return int64(float64(h.DTS) / float64(h.VideoClockRate) * 1000)
+		return int64(float64(h.DTS) / float64(h.VideoClockRate/1000.0))
 	}
 }
 
@@ -66,7 +66,7 @@ func (a *AACAudio) RawPTS() int64 {
 	if a.AudioClockRate == 0 {
 		return a.PTS
 	} else {
-		return int64(float64(a.PTS) / float64(a.AudioClockRate) * 1000)
+		return int64(float64(a.PTS) / float64(a.AudioClockRate/1000.0))
 	}
 }
 
@@ -74,7 +74,7 @@ func (a *AACAudio) RawDTS() int64 {
 	if a.AudioClockRate == 0 {
 		return a.DTS
 	} else {
-		return int64(float64(a.DTS) / float64(a.AudioClockRate) * 1000)
+		return int64(float64(a.DTS) / float64(a.AudioClockRate/1000.0))
 	}
 }
 

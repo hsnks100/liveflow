@@ -1,20 +1,23 @@
 package hub
 
 import (
+	"context"
+	"fmt"
 	"sync"
+	"time"
 )
 
 // Hub 구조체: streamID별로 독립적으로 데이터를 관리하고, Pub/Sub 메커니즘을 지원합니다.
 type Hub struct {
-	streams    map[string][]chan FrameData // 각 streamID에 대한 채널을 저장
-	notifyChan chan string                 // streamID가 결정되었을 때 노티하는 채널
-	mu         sync.RWMutex                // 동시성을 위한 Mutex
+	streams    map[string][]chan *FrameData // 각 streamID에 대한 채널을 저장
+	notifyChan chan string                  // streamID가 결정되었을 때 노티하는 채널
+	mu         sync.RWMutex                 // 동시성을 위한 Mutex
 }
 
 // NewHub : Hub 생성자
 func NewHub() *Hub {
 	return &Hub{
-		streams:    make(map[string][]chan FrameData),
+		streams:    make(map[string][]chan *FrameData),
 		notifyChan: make(chan string, 1024), // 버퍼 크기를 조절할 수 있습니다.
 	}
 }
@@ -24,16 +27,28 @@ func (h *Hub) Notify(streamID string) {
 }
 
 // Publish : 주어진 streamID에 데이터를 Publish합니다.
-func (h *Hub) Publish(streamID string, data FrameData) {
+func (h *Hub) Publish(streamID string, data *FrameData) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 
 	if _, exists := h.streams[streamID]; !exists {
-		h.streams[streamID] = make([]chan FrameData, 0)
+		h.streams[streamID] = make([]chan *FrameData, 0)
 	}
 
+	if data.AACAudio != nil {
+		fmt.Println("send data: ", data.AACAudio.RawDTS())
+	}
+	if data.H264Video != nil {
+		fmt.Println("send data: ", data.H264Video.RawDTS())
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 1*time.Second)
+	defer cancel()
 	for _, ch := range h.streams[streamID] {
-		ch <- data
+		select {
+		case ch <- data:
+		case <-ctx.Done():
+			fmt.Println("timeout~")
+		}
 	}
 }
 
@@ -52,11 +67,11 @@ func (h *Hub) Unpublish(streamID string) {
 }
 
 // Subscribe : 주어진 streamID에 대해 구독합니다.
-func (h *Hub) Subscribe(streamID string) <-chan FrameData {
+func (h *Hub) Subscribe(streamID string) <-chan *FrameData {
 	h.mu.RLock()
 	defer h.mu.RUnlock()
 
-	ch := make(chan FrameData)
+	ch := make(chan *FrameData)
 	h.streams[streamID] = append(h.streams[streamID], ch)
 	return ch
 }

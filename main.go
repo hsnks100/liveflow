@@ -10,7 +10,9 @@ import (
 	"mrw-clone/media/hlshub"
 	"mrw-clone/media/hub"
 	"mrw-clone/media/streamer/hls"
+	"mrw-clone/media/streamer/record/mp4"
 	"mrw-clone/media/streamer/rtmp"
+	"mrw-clone/media/streamer/whip"
 )
 
 // RTMP 받으면 자동으로 HLS 서비스 동작, 녹화 서비스까지~?
@@ -35,22 +37,24 @@ func main() {
 		go func() {
 			api.Start("0.0.0.0:8044")
 		}()
-
 		for streamID := range hub.SubscribeToStreamID() {
 			fmt.Printf("New streamID received: %s\n", streamID)
-
 			hls := hls.NewHLS(hls.HLSArgs{
 				Hub:    hub,
 				HLSHub: hlsHub,
 			})
 			hls.Start(ctx, streamID)
-			//mp4 := mp4.NewMP4(mp4.MP4Args{
-			//	Hub: hub,
-			//})
-			//mp4.Start(ctx, streamID)
+			mp4 := mp4.NewMP4(mp4.MP4Args{
+				Hub: hub,
+			})
+			mp4.Start(ctx, streamID)
 		}
 	}()
 
+	whipServer := whip.NewWHIP(whip.WHIPArgs{
+		Hub: hub,
+	})
+	go whipServer.Serve()
 	rtmpServer := rtmp.NewRTMP(rtmp.RTMPArgs{
 		Hub: hub,
 	})

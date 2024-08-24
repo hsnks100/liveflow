@@ -110,10 +110,18 @@ func (h *MP4) Start(ctx context.Context, streamID string) error {
 		h.audioIndex = muxer.AddAudioTrack(gomp4.MP4_CODEC_AAC)
 		h.muxer = muxer
 		for data := range sub {
-			//fmt.Println("@@@ MP4")
+			fmt.Println("@@@ MP4")
+			if data.AACAudio != nil {
+				fmt.Println("[MP4] AACAudio: ", data.AACAudio.RawDTS())
+			}
+			if data.H264Video != nil {
+				fmt.Println("[MP4] H264Video: ", data.H264Video.RawDTS())
+			}
 			if data.H264Video != nil {
 				//fmt.Println(hex.Dump(data.H264Video.Data))
-				err := h.muxer.Write(h.videoIndex, data.H264Video.Data, uint64(data.H264Video.RawPTS()), uint64(data.H264Video.RawDTS()))
+				videoData := make([]byte, len(data.H264Video.Data))
+				copy(videoData, data.H264Video.Data)
+				err := h.muxer.Write(h.videoIndex, videoData, uint64(data.H264Video.RawPTS()), uint64(data.H264Video.RawDTS()))
 				if err != nil {
 					log.Error(ctx, err, "failed to write video")
 				}
