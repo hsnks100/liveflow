@@ -110,12 +110,11 @@ func (h *MP4) Start(ctx context.Context, streamID string) error {
 		}
 		h.muxer = muxer
 		for data := range sub {
-			fmt.Println("@@@ MP4")
 			if data.AACAudio != nil {
-				fmt.Println("[MP4] AACAudio: ", data.AACAudio.RawDTS())
+				log.Debug(ctx, "AACAudio: ", data.AACAudio.RawPTS())
 			}
 			if data.H264Video != nil {
-				fmt.Println("[MP4] H264Video: ", data.H264Video.RawDTS())
+				log.Debug(ctx, "H264Video: ", data.H264Video.RawPTS())
 			}
 			if data.H264Video != nil {
 				if !h.hasVideo {

@@ -35,12 +35,6 @@ func (h *Hub) Publish(streamID string, data *FrameData) {
 		h.streams[streamID] = make([]chan *FrameData, 0)
 	}
 
-	if data.AACAudio != nil {
-		fmt.Println("send data: ", data.AACAudio.RawDTS())
-	}
-	if data.H264Video != nil {
-		fmt.Println("send data: ", data.H264Video.RawDTS())
-	}
 	ctx, cancel := context.WithTimeout(context.Background(), 1*time.Second)
 	defer cancel()
 	for _, ch := range h.streams[streamID] {
