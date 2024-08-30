@@ -1,4 +1,4 @@
-module mrw-clone
+module liveflow
 
 go 1.21
 

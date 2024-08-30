@@ -2,13 +2,15 @@ package rtmp
 
 import (
 	"context"
+	"fmt"
 	"io"
 	"net"
 
+	"github.com/sirupsen/logrus"
 	"github.com/yutopp/go-rtmp"
 
-	"mrw-clone/log"
-	"mrw-clone/media/hub"
+	"liveflow/log"
+	"liveflow/media/hub"
 )
 
 const (
@@ -33,7 +35,8 @@ func NewRTMP(args RTMPArgs) *RTMP {
 }
 
 func (r *RTMP) Serve(ctx context.Context) error {
-	tcpAddr, err := net.ResolveTCPAddr("tcp", ":1930")
+	port := 1930
+	tcpAddr, err := net.ResolveTCPAddr("tcp", fmt.Sprintf(":%d", port))
 	if err != nil {
 		log.Errorf(ctx, "Failed: %+v", err)
 	}
@@ -51,7 +54,6 @@ func (r *RTMP) Serve(ctx context.Context) error {
 				//ControlState: rtmp.StreamControlStateConfig{
 				//	DefaultBandwidthWindowSize: 6 * 1024 * 1024 / 8,
 				//},
-				//Logger: nil,
 				SkipHandshakeVerification:               false,
 				IgnoreMessagesOnNotExistStream:          false,
 				IgnoreMessagesOnNotExistStreamThreshold: 0,
@@ -63,6 +65,10 @@ func (r *RTMP) Serve(ctx context.Context) error {
 			}
 		},
 	})
+	ctx = log.WithFields(ctx, logrus.Fields{
+		"port": port,
+	})
+	log.Info(ctx, "RTMP server started")
 	if err := srv.Serve(listener); err != nil {
 		log.Errorf(ctx, "Failed: %+v", err)
 	}

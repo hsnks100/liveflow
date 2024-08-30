@@ -5,12 +5,32 @@ import (
 	"fmt"
 	"sync"
 	"time"
+
+	"liveflow/log"
 )
+
+type MediaType int
+
+const (
+	Video MediaType = 1
+	Audio           = 2
+)
+
+type MediaSpec struct {
+	MediaType MediaType
+	CodecType string
+}
+
+type Source interface {
+	Name() string
+	MediaSpecs() []MediaSpec
+	StreamID() string
+}
 
 // Hub 구조체: streamID별로 독립적으로 데이터를 관리하고, Pub/Sub 메커니즘을 지원합니다.
 type Hub struct {
 	streams    map[string][]chan *FrameData // 각 streamID에 대한 채널을 저장
-	notifyChan chan string                  // streamID가 결정되었을 때 노티하는 채널
+	notifyChan chan Source                  // streamID가 결정되었을 때 노티하는 채널
 	mu         sync.RWMutex                 // 동시성을 위한 Mutex
 }
 
@@ -18,11 +38,12 @@ type Hub struct {
 func NewHub() *Hub {
 	return &Hub{
 		streams:    make(map[string][]chan *FrameData),
-		notifyChan: make(chan string, 1024), // 버퍼 크기를 조절할 수 있습니다.
+		notifyChan: make(chan Source, 1024), // 버퍼 크기를 조절할 수 있습니다.
 	}
 }
 
-func (h *Hub) Notify(streamID string) {
+func (h *Hub) Notify(ctx context.Context, streamID Source) {
+	log.Info(ctx, "Notify", streamID.Name(), streamID.MediaSpecs())
 	h.notifyChan <- streamID
 }
 
@@ -71,7 +92,7 @@ func (h *Hub) Subscribe(streamID string) <-chan *FrameData {
 }
 
 // SubscribeToStreamID : 스트림 ID가 결정되었을 때 이를 구독하는 채널을 반환합니다.
-func (h *Hub) SubscribeToStreamID() <-chan string {
+func (h *Hub) SubscribeToStreamID() <-chan Source {
 	return h.notifyChan
 }
 

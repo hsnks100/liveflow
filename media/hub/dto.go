@@ -7,6 +7,7 @@ import (
 type FrameData struct {
 	H264Video *H264Video
 	AACAudio  *AACAudio
+	OPUSAudio *OPUSAudio
 	//AudioCodecData *AudioCodecData
 	//MediaInfo      *MediaInfo
 }
@@ -42,6 +43,37 @@ func (h *H264Video) RawDTS() int64 {
 		return h.DTS
 	} else {
 		return int64(float64(h.DTS) / float64(h.VideoClockRate/1000.0))
+	}
+}
+
+type OPUSAudio struct {
+	PTS            int64
+	DTS            int64
+	AudioClockRate uint32
+	Data           []byte
+}
+
+func (a *OPUSAudio) RawTimestamp() int64 {
+	if a.AudioClockRate == 0 {
+		return a.PTS
+	} else {
+		return int64(float64(a.PTS) / float64(a.AudioClockRate) * 1000)
+	}
+}
+
+func (a *OPUSAudio) RawPTS() int64 {
+	if a.AudioClockRate == 0 {
+		return a.PTS
+	} else {
+		return int64(float64(a.PTS) / float64(a.AudioClockRate/1000.0))
+	}
+}
+
+func (a *OPUSAudio) RawDTS() int64 {
+	if a.AudioClockRate == 0 {
+		return a.DTS
+	} else {
+		return int64(float64(a.DTS) / float64(a.AudioClockRate/1000.0))
 	}
 }
 

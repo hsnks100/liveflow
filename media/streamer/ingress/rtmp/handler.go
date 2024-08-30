@@ -16,8 +16,8 @@ import (
 	"github.com/yutopp/go-rtmp"
 	rtmpmsg "github.com/yutopp/go-rtmp/message"
 
-	"mrw-clone/log"
-	"mrw-clone/media/hub"
+	"liveflow/log"
+	"liveflow/media/hub"
 )
 
 type Handler struct {
@@ -32,6 +32,21 @@ type Handler struct {
 	sps    []byte
 	pps    []byte
 	hasSPS bool
+
+	mediaSpecs     []hub.MediaSpec
+	notifiedSource bool
+}
+
+func (h *Handler) Name() string {
+	return "rtmp"
+}
+
+func (h *Handler) MediaSpecs() []hub.MediaSpec {
+	return h.mediaSpecs
+}
+
+func (h *Handler) StreamID() string {
+	return h.streamID
 }
 
 func (h *Handler) OnServe(conn *rtmp.Conn) {
@@ -48,7 +63,8 @@ func (h *Handler) OnCreateStream(timestamp uint32, cmd *rtmpmsg.NetConnectionCre
 }
 
 func (h *Handler) OnPublish(_ *rtmp.StreamContext, timestamp uint32, cmd *rtmpmsg.NetStreamPublish) error {
-	log.Infof(context.Background(), "OnPublish: %#v", cmd)
+	ctx := context.Background()
+	log.Infof(ctx, "OnPublish: %#v", cmd)
 
 	// (example) Reject a connection when PublishingName is empty
 	if cmd.PublishingName == "" {
@@ -74,8 +90,21 @@ func (h *Handler) OnPublish(_ *rtmp.StreamContext, timestamp uint32, cmd *rtmpms
 	h.flvEnc = enc
 
 	h.streamID = cmd.PublishingName
-	h.hub.Notify(cmd.PublishingName)
+	h.mediaSpecs = []hub.MediaSpec{
+		{
+			MediaType: hub.Video,
+			CodecType: "h264",
+		},
+		{
+			MediaType: hub.Audio,
+			CodecType: "aac",
+		},
+	}
 
+	if !h.notifiedSource && len(h.mediaSpecs) == 2 {
+		h.hub.Notify(ctx, h)
+		h.notifiedSource = true
+	}
 	return nil
 }
 
@@ -159,6 +188,8 @@ func (h *Handler) OnVideo(timestamp uint32, payload io.Reader) error {
 	videoData, err := h.decodeVideoData(payloadBuffer)
 	if err != nil {
 		return err
+	}
+	if videoData.CodecID == flvtag.CodecIDAVC {
 	}
 
 	// FLV 바디 데이터를 처리하고 대응하는 작업 수행

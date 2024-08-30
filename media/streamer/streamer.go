@@ -3,7 +3,7 @@ package streamer
 import (
 	"context"
 
-	"mrw-clone/media/hub"
+	"liveflow/media/hub"
 )
 
 type Streamer interface {

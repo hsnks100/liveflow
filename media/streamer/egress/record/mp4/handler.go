@@ -8,10 +8,17 @@ import (
 	"os"
 
 	"github.com/deepch/vdk/codec/aacparser"
+	"github.com/sirupsen/logrus"
 	gomp4 "github.com/yapingcat/gomedia/go-mp4"
 
-	"mrw-clone/log"
-	"mrw-clone/media/hub"
+	"liveflow/log"
+	"liveflow/media/hub"
+	"liveflow/media/streamer/fields"
+)
+
+var (
+	ErrNotContainAudioOrVideo = errors.New("media spec does not contain audio or video")
+	ErrUnsupportedCodec       = errors.New("unsupported codec")
 )
 
 type cacheWriterSeeker struct {
@@ -87,8 +94,37 @@ func NewMP4(args MP4Args) *MP4 {
 	}
 }
 
-func (h *MP4) Start(ctx context.Context, streamID string) error {
-	sub := h.hub.Subscribe(streamID)
+func (h *MP4) Start(ctx context.Context, source hub.Source) error {
+	containsAudio := false
+	containsVideo := false
+	audioCodec := ""
+	videoCodec := ""
+	for _, spec := range source.MediaSpecs() {
+		if spec.MediaType == hub.Audio {
+			containsAudio = true
+			audioCodec = spec.CodecType
+		}
+		if spec.MediaType == hub.Video {
+			containsVideo = true
+			videoCodec = spec.CodecType
+		}
+	}
+	if !containsVideo || !containsAudio {
+		return ErrNotContainAudioOrVideo
+	}
+	if audioCodec != "aac" {
+		return ErrUnsupportedCodec
+	}
+	if videoCodec != "h264" {
+		return ErrUnsupportedCodec
+	}
+
+	ctx = log.WithFields(ctx, logrus.Fields{
+		fields.StreamID:   source.StreamID(),
+		fields.SourceName: source.Name(),
+	})
+	log.Info(ctx, "start mp4")
+	sub := h.hub.Subscribe(source.StreamID())
 
 	go func() {
 		var err error

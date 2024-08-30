@@ -11,8 +11,8 @@ import (
 	"github.com/bluenviron/gohlslib/pkg/playlist"
 	"github.com/labstack/echo/v4"
 
-	"mrw-clone/log"
-	"mrw-clone/media/hlshub"
+	"liveflow/log"
+	"liveflow/media/hlshub"
 )
 
 const (

@@ -9,10 +9,17 @@ import (
 	"github.com/bluenviron/gohlslib"
 	"github.com/bluenviron/gohlslib/pkg/codecs"
 	"github.com/deepch/vdk/codec/h264parser"
+	"github.com/sirupsen/logrus"
 
-	"mrw-clone/log"
-	"mrw-clone/media/hlshub"
-	"mrw-clone/media/hub"
+	"liveflow/log"
+	"liveflow/media/hlshub"
+	"liveflow/media/hub"
+	"liveflow/media/streamer/fields"
+)
+
+var (
+	ErrNotContainAudioOrVideo = errors.New("media spec does not contain audio or video")
+	ErrUnsupportedCodec       = errors.New("unsupported codec")
 )
 
 type HLS struct {
@@ -33,8 +40,37 @@ func NewHLS(args HLSArgs) *HLS {
 	}
 }
 
-func (h *HLS) Start(ctx context.Context, streamID string) {
-	sub := h.hub.Subscribe(streamID)
+func (h *HLS) Start(ctx context.Context, source hub.Source) error {
+	containsAudio := false
+	containsVideo := false
+	audioCodec := ""
+	videoCodec := ""
+	for _, spec := range source.MediaSpecs() {
+		if spec.MediaType == hub.Audio {
+			containsAudio = true
+			audioCodec = spec.CodecType
+		}
+		if spec.MediaType == hub.Video {
+			containsVideo = true
+			videoCodec = spec.CodecType
+		}
+	}
+	if !containsVideo || !containsAudio {
+		return ErrNotContainAudioOrVideo
+	}
+	if audioCodec != "aac" {
+		return ErrUnsupportedCodec
+	}
+	if videoCodec != "h264" {
+		return ErrUnsupportedCodec
+	}
+	ctx = log.WithFields(ctx, logrus.Fields{
+		fields.StreamID:   source.StreamID(),
+		fields.SourceName: source.Name(),
+	})
+	log.Info(ctx, "start hls")
+	log.Info(ctx, "view url: ", "http://localhost:8044/hls/"+source.StreamID()+"/master.m3u8")
+	sub := h.hub.Subscribe(source.StreamID())
 	go func() {
 		for data := range sub {
 			if data.AACAudio != nil {
@@ -43,7 +79,7 @@ func (h *HLS) Start(ctx context.Context, streamID string) {
 					if err != nil {
 						log.Error(ctx, err)
 					}
-					h.hlsHub.StoreMuxer(streamID, "pass", muxer)
+					h.hlsHub.StoreMuxer(source.StreamID(), "pass", muxer)
 					err = muxer.Start()
 					if err != nil {
 						log.Error(ctx, err)
@@ -67,8 +103,9 @@ func (h *HLS) Start(ctx context.Context, streamID string) {
 				}
 			}
 		}
-		fmt.Println("@@@ [HLS] end of streamID: ", streamID)
+		fmt.Println("@@@ [HLS] end of streamID: ", source.StreamID())
 	}()
+	return nil
 }
 
 func (h *HLS) makeMuxer(extraData []byte) (*gohlslib.Muxer, error) {
