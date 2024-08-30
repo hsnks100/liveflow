@@ -5,6 +5,7 @@ import (
 	"fmt"
 
 	"github.com/labstack/echo/v4"
+	"github.com/pion/webrtc/v3"
 	"github.com/sirupsen/logrus"
 
 	"liveflow/httpsrv"
@@ -31,6 +32,8 @@ func main() {
 	})
 	log.Info(ctx, "liveflow is started")
 	hub := hub.NewHub()
+	var tracks map[string][]*webrtc.TrackLocalStaticRTP
+	tracks = make(map[string][]*webrtc.TrackLocalStaticRTP)
 	// ingress
 	// Egress 서비스는 streamID 알림을 구독하여 처리 시작
 	go func() {
@@ -66,17 +69,19 @@ func main() {
 				log.Errorf(ctx, "failed to start mp4: %v", err)
 			}
 			whep := whep.NewWHEP(whep.WHEPArgs{
-				Hub: hub,
+				Tracks: tracks,
+				Hub:    hub,
 			})
 			err = whep.Start(ctx, source)
 			if err != nil {
-				log.Errorf(ctx, "failed to start whip: %v", err)
+				log.Errorf(ctx, "failed to start whep: %v", err)
 			}
 		}
 	}()
 
 	whipServer := whip.NewWHIP(whip.WHIPArgs{
-		Hub: hub,
+		Hub:    hub,
+		Tracks: tracks,
 	})
 	go whipServer.Serve()
 	rtmpServer := rtmp.NewRTMP(rtmp.RTMPArgs{

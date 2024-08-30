@@ -20,19 +20,7 @@ var (
 	errNoStreamKey = echo.NewHTTPError(http.StatusUnauthorized, "No stream key provided")
 )
 
-type WHIP struct {
-	hub    *hub.Hub
-	tracks map[string][]*webrtc.TrackLocalStaticRTP
-}
-
-type WHIPArgs struct {
-	Hub *hub.Hub
-}
-
 var (
-	//videoTrack *webrtc.TrackLocalStaticRTP
-	//audioTrack *webrtc.TrackLocalStaticRTP
-
 	peerConnectionConfiguration = webrtc.Configuration{
 		ICEServers: []webrtc.ICEServer{
 			{
@@ -42,10 +30,20 @@ var (
 	}
 )
 
+type WHIP struct {
+	hub    *hub.Hub
+	tracks map[string][]*webrtc.TrackLocalStaticRTP
+}
+
+type WHIPArgs struct {
+	Hub    *hub.Hub
+	Tracks map[string][]*webrtc.TrackLocalStaticRTP
+}
+
 func NewWHIP(args WHIPArgs) *WHIP {
 	return &WHIP{
 		hub:    args.Hub,
-		tracks: make(map[string][]*webrtc.TrackLocalStaticRTP),
+		tracks: args.Tracks,
 	}
 }
 
@@ -161,7 +159,6 @@ func (r *WHIP) whipHandler(c echo.Context) error {
 		Hub:                r.hub,
 		PeerConnection:     peerConnection,
 		StreamID:           streamKey,
-		Tracks:             r.tracks,
 		ExpectedTrackCount: trackCount,
 	})
 	trackArgCh := make(chan TrackArgs)

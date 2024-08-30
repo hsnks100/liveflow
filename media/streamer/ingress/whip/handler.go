@@ -23,14 +23,12 @@ var (
 )
 
 type WebRTCHandler struct {
-	hub            *hub.Hub
-	pc             *webrtc.PeerConnection
-	streamID       string
-	timestampGen   TimestampGenerator[int64]
-	tracks         map[string][]*webrtc.TrackLocalStaticRTP
-	videoTrack     *webrtc.TrackLocalStaticRTP
-	audioTrack     *webrtc.TrackLocalStaticRTP
-	notifiedSource bool
+	hub               *hub.Hub
+	pc                *webrtc.PeerConnection
+	streamID          string
+	audioTimestampGen TimestampGenerator[int64]
+	videoTimestampGen TimestampGenerator[int64]
+	notifiedSource    bool
 
 	mediaArgs          []hub.MediaSpec
 	expectedTrackCount int
@@ -45,26 +43,13 @@ type WebRTCHandlerArgs struct {
 }
 
 func NewWebRTCHandler(hub *hub.Hub, args *WebRTCHandlerArgs) *WebRTCHandler {
-	videoTrack, err := webrtc.NewTrackLocalStaticRTP(webrtc.RTPCodecCapability{MimeType: webrtc.MimeTypeH264}, "video", "pion")
-	if err != nil {
-		panic(err)
-	}
-	audioTrack, err := webrtc.NewTrackLocalStaticRTP(webrtc.RTPCodecCapability{MimeType: webrtc.MimeTypeOpus}, "audio", "pion")
-	if err != nil {
-		panic(err)
-	}
 	ret := &WebRTCHandler{
 		hub:                hub,
 		streamID:           args.StreamID,
-		timestampGen:       TimestampGenerator[int64]{},
+		audioTimestampGen:  TimestampGenerator[int64]{},
+		videoTimestampGen:  TimestampGenerator[int64]{},
 		pc:                 args.PeerConnection,
-		tracks:             args.Tracks,
 		expectedTrackCount: args.ExpectedTrackCount,
-		videoTrack:         videoTrack,
-		audioTrack:         audioTrack,
-	}
-	if _, ok := ret.tracks[args.StreamID]; !ok {
-		ret.tracks[args.StreamID] = []*webrtc.TrackLocalStaticRTP{videoTrack, audioTrack}
 	}
 	return ret
 }
@@ -96,20 +81,18 @@ func (w *WebRTCHandler) WaitTrackArgs(ctx context.Context, timeout time.Duration
 			}
 			return ErrTrackWaitTimeOut
 		case args := <-trackArgCh:
-			fmt.Println("add track args: ", args)
-
 			audioSplits := strings.Split(args.MimeType, "audio/")
 			videoSplits := strings.Split(args.MimeType, "video/")
 			if len(audioSplits) > 1 {
 				w.mediaArgs = append(w.mediaArgs, hub.MediaSpec{
 					MediaType: hub.Audio,
-					CodecType: audioSplits[1],
+					CodecType: strings.ToLower(audioSplits[1]),
 				})
 			}
 			if len(videoSplits) > 1 {
 				w.mediaArgs = append(w.mediaArgs, hub.MediaSpec{
 					MediaType: hub.Video,
-					CodecType: videoSplits[1],
+					CodecType: strings.ToLower(videoSplits[1]),
 				})
 			}
 			if len(w.mediaArgs) == w.expectedTrackCount {
@@ -172,7 +155,6 @@ func (w *WebRTCHandler) OnTrack(track *webrtc.TrackRemote, receiver *webrtc.RTPR
 
 		switch track.Kind() {
 		case webrtc.RTPCodecTypeVideo:
-			//fmt.Println("timestamp: ", pkt.Timestamp)
 			if len(videoPackets) > 0 && currentVideoTimestamp != pkt.Timestamp {
 				videoPacketsQueue = append(videoPacketsQueue, videoPackets)
 				videoPackets = nil
@@ -184,10 +166,6 @@ func (w *WebRTCHandler) OnTrack(track *webrtc.TrackRemote, receiver *webrtc.RTPR
 				videoPacketsQueue = append(videoPacketsQueue, videoPackets)
 				videoPackets = nil
 			}
-			//fmt.Println("frame len: ", len(h264Bytes))
-			if err = w.videoTrack.WriteRTP(pkt); err != nil {
-				panic(err)
-			}
 		case webrtc.RTPCodecTypeAudio:
 			if len(audioPackets) > 0 && currentAudioTimestamp != pkt.Timestamp {
 				audioPacketsQueue = append(audioPacketsQueue, audioPackets)
@@ -198,9 +176,6 @@ func (w *WebRTCHandler) OnTrack(track *webrtc.TrackRemote, receiver *webrtc.RTPR
 			if pkt.Marker {
 				audioPacketsQueue = append(audioPacketsQueue, audioPackets)
 				audioPackets = nil
-			}
-			if err = w.audioTrack.WriteRTP(pkt); err != nil {
-				panic(err)
 			}
 		}
 		if len(videoPacketsQueue) > 0 || len(audioPacketsQueue) > 0 {
@@ -244,7 +219,7 @@ func (w *WebRTCHandler) OnVideo(ctx context.Context, packets []*rtp.Packet) erro
 	if len(payload) == 0 {
 		return nil
 	}
-	pts := w.timestampGen.GetTimestamp(int64(packets[0].Timestamp))
+	pts := w.videoTimestampGen.GetTimestamp(int64(packets[0].Timestamp))
 	w.hub.Publish(w.streamID, &hub.FrameData{
 		H264Video: &hub.H264Video{
 			PTS:            pts,
@@ -279,7 +254,7 @@ func (w *WebRTCHandler) OnAudio(ctx context.Context, clockRate uint32, packets [
 	if len(payload) == 0 {
 		return nil
 	}
-	pts := w.timestampGen.GetTimestamp(int64(packets[0].Timestamp))
+	pts := w.audioTimestampGen.GetTimestamp(int64(packets[0].Timestamp))
 	w.hub.Publish(w.streamID, &hub.FrameData{
 		OPUSAudio: &hub.OPUSAudio{
 			PTS:            pts,
@@ -309,6 +284,7 @@ func (r *WHIP) whepHandler(c echo.Context) error {
 	}
 
 	var rtpSenders []*webrtc.RTPSender
+	fmt.Println("tracks: ", len(r.tracks))
 	for _, track := range r.tracks[streamKey] {
 		sender, err := peerConnection.AddTrack(track)
 		if err != nil {
