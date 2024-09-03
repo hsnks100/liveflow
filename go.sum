@@ -1,9 +1,14 @@
 github.com/abema/go-mp4 v1.2.0 h1:gi4X8xg/m179N/J15Fn5ugywN9vtI6PLk6iLldHGLAk=
 github.com/abema/go-mp4 v1.2.0/go.mod h1:vPl9t5ZK7K0x68jh12/+ECWBCXoWuIDtNgPtU2f04ws=
-github.com/asticode/go-astikit v0.30.0 h1:DkBkRQRIxYcknlaU7W7ksNfn4gMFsB0tqMJflxkRsZA=
+github.com/asticode/go-astiav v0.18.0 h1:5c1XRqBXc21LRxe3ouG13hJlLi77rxgHnoMvCkRUBb8=
+github.com/asticode/go-astiav v0.18.0/go.mod h1:K7D8UC6GeQt85FUxk2KVwYxHnotrxuEnp5evkkudc2s=
 github.com/asticode/go-astikit v0.30.0/go.mod h1:h4ly7idim1tNhaVkdVBeXQZEE3L0xblP7fCWbgwipF0=
+github.com/asticode/go-astikit v0.42.0 h1:pnir/2KLUSr0527Tv908iAH6EGYYrYta132vvjXsH5w=
+github.com/asticode/go-astikit v0.42.0/go.mod h1:h4ly7idim1tNhaVkdVBeXQZEE3L0xblP7fCWbgwipF0=
 github.com/asticode/go-astits v1.13.0 h1:XOgkaadfZODnyZRR5Y0/DWkA9vrkLLPLeeOvDwfKZ1c=
 github.com/asticode/go-astits v1.13.0/go.mod h1:QSHmknZ51pf6KJdHKZHJTLlMegIrhega3LPWz3ND/iI=
+github.com/at-wat/ebml-go v0.17.1 h1:pWG1NOATCFu1hnlowCzrA1VR/3s8tPY6qpU+2FwW7X4=
+github.com/at-wat/ebml-go v0.17.1/go.mod h1:w1cJs7zmGsb5nnSvhWGKLCxvfu4FVx5ERvYDIalj1ww=
 github.com/bluenviron/gohlslib v1.4.0 h1:3a9W1x8eqlxJUKt1sJCunPGtti5ALIY2ik4GU0RVe7E=
 github.com/bluenviron/gohlslib v1.4.0/go.mod h1:q5ZElzNw5GRbV1VEI45qkcPbKBco6BP58QEY5HyFsmo=
 github.com/bluenviron/mediacommon v1.11.1-0.20240525122142-20163863aa75 h1:5P8Um+ySuwZApuVS9gI6U0MnrIFybTfLrZSqV2ie5lA=

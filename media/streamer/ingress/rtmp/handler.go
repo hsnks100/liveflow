@@ -37,6 +37,10 @@ type Handler struct {
 	notifiedSource bool
 }
 
+func (h *Handler) Depth() int {
+	return 0
+}
+
 func (h *Handler) Name() string {
 	return "rtmp"
 }
@@ -93,10 +97,12 @@ func (h *Handler) OnPublish(_ *rtmp.StreamContext, timestamp uint32, cmd *rtmpms
 	h.mediaSpecs = []hub.MediaSpec{
 		{
 			MediaType: hub.Video,
+			ClockRate: 90000,
 			CodecType: "h264",
 		},
 		{
 			MediaType: hub.Audio,
+			ClockRate: aacDefaultSampleRate,
 			CodecType: "aac",
 		},
 	}
@@ -320,7 +326,6 @@ func (h *Handler) publishVideoData(timestamp uint32, compositionTime int32, vide
 	dts := int64(timestamp)
 	pts := int64(compositionTime) + dts
 
-	fmt.Println("[rtmp] dts: ", dts)
 	h.hub.Publish(h.streamID, &hub.FrameData{
 		H264Video: &hub.H264Video{
 			VideoClockRate: 90000,

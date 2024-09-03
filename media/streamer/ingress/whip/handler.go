@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/deepch/vdk/codec/h264parser"
 	"github.com/labstack/echo/v4"
 	"github.com/pion/rtp"
 	"github.com/pion/rtp/codecs"
@@ -32,6 +33,10 @@ type WebRTCHandler struct {
 
 	mediaArgs          []hub.MediaSpec
 	expectedTrackCount int
+}
+
+func (w *WebRTCHandler) Depth() int {
+	return 0
 }
 
 type WebRTCHandlerArgs struct {
@@ -86,12 +91,14 @@ func (w *WebRTCHandler) WaitTrackArgs(ctx context.Context, timeout time.Duration
 			if len(audioSplits) > 1 {
 				w.mediaArgs = append(w.mediaArgs, hub.MediaSpec{
 					MediaType: hub.Audio,
+					ClockRate: args.ClockRate,
 					CodecType: strings.ToLower(audioSplits[1]),
 				})
 			}
 			if len(videoSplits) > 1 {
 				w.mediaArgs = append(w.mediaArgs, hub.MediaSpec{
 					MediaType: hub.Video,
+					ClockRate: args.ClockRate,
 					CodecType: strings.ToLower(videoSplits[1]),
 				})
 			}
@@ -220,6 +227,30 @@ func (w *WebRTCHandler) OnVideo(ctx context.Context, packets []*rtp.Packet) erro
 		return nil
 	}
 	pts := w.videoTimestampGen.GetTimestamp(int64(packets[0].Timestamp))
+	nalus, _ := h264parser.SplitNALUs(payload)
+	var slice hub.SliceType
+	for _, nalu := range nalus {
+		if len(nalu) < 1 {
+			continue
+		}
+		nalUnitType := nalu[0] & 0x1f
+		switch nalUnitType {
+		case h264parser.NALU_SPS:
+			slice = hub.SliceSPS
+		case h264parser.NALU_PPS:
+			slice = hub.SlicePPS
+		default:
+			sliceType, _ := h264parser.ParseSliceHeaderFromNALU(nalu)
+			switch sliceType {
+			case h264parser.SLICE_I:
+				slice = hub.SliceI
+			case h264parser.SLICE_P:
+				slice = hub.SliceP
+			case h264parser.SLICE_B:
+				slice = hub.SliceB
+			}
+		}
+	}
 	w.hub.Publish(w.streamID, &hub.FrameData{
 		H264Video: &hub.H264Video{
 			PTS:            pts,
@@ -228,7 +259,7 @@ func (w *WebRTCHandler) OnVideo(ctx context.Context, packets []*rtp.Packet) erro
 			Data:           payload,
 			SPS:            nil,
 			PPS:            nil,
-			SliceType:      0,
+			SliceType:      slice,
 			CodecData:      nil,
 		},
 		AACAudio: nil,

@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"strconv"
 	"strings"
 
 	"github.com/labstack/echo/v4"
@@ -85,15 +84,6 @@ func (r *WHIP) whipHandler(c echo.Context) error {
 	// Count the number of media tracks
 	trackCount := 0
 	for _, media := range parsedSDP.MediaDescriptions {
-		//for _, attr := range media.Attributes {
-		//	if attr.Key == "rtpmap" {
-		//		rtpmap, err := parseRTPMAP(attr)
-		//		if err != nil {
-		//			return c.JSON(http.StatusInternalServerError, err.Error())
-		//		}
-		//		fmt.Printf("RTPMAP: %+v\n", rtpmap)
-		//	}
-		//}
 		if media.MediaName.Media == "audio" || media.MediaName.Media == "video" {
 			trackCount++
 		}
@@ -203,55 +193,4 @@ func writeAnswer3(c echo.Context, peerConnection *webrtc.PeerConnection, offer [
 
 	// Write Answer with Candidates as HTTP Response
 	return c.String(http.StatusOK, peerConnection.LocalDescription().SDP)
-}
-
-type RTPMAP struct {
-	PayloadType webrtc.PayloadType
-	MimeType    string
-	CodecName   string
-	ClockRate   uint32
-	Channels    uint16
-}
-
-func parseRTPMAP(attr sdp.Attribute) (RTPMAP, error) {
-	const (
-		attributeRtpMap     = "rtpmap"
-		attributeValueIndex = 2
-		fmtpIndexCodec      = 0
-		fmtpIndexClockRate  = 1
-		fmtpIndexChannels   = 2
-	)
-	var (
-		InvalidSDPAttribute = fmt.Errorf("invalid SDP attribute")
-	)
-	if attr.Key != attributeRtpMap || attr.Value == "" {
-		return RTPMAP{}, InvalidSDPAttribute
-	}
-	var rtpmap RTPMAP
-	r := strings.Split(attr.Value, " ")
-	if len(r) >= 1 {
-		pt, err := strconv.Atoi(r[0])
-		if err != nil {
-			return RTPMAP{}, InvalidSDPAttribute
-		}
-		rtpmap.PayloadType = webrtc.PayloadType(pt)
-	}
-	if len(r) >= attributeValueIndex {
-		rtpmap.MimeType = r[1]
-		r2 := strings.Split(rtpmap.MimeType, "/")
-		if len(r2) >= fmtpIndexCodec+1 {
-			rtpmap.CodecName = r2[fmtpIndexCodec]
-		}
-		if len(r2) >= fmtpIndexClockRate+1 {
-			if clockRate, err := strconv.Atoi(r2[fmtpIndexClockRate]); err == nil {
-				rtpmap.ClockRate = uint32(clockRate)
-			}
-		}
-		if len(r2) >= fmtpIndexChannels+1 {
-			if channels, err := strconv.Atoi(r2[fmtpIndexChannels]); err == nil {
-				rtpmap.Channels = uint16(channels)
-			}
-		}
-	}
-	return rtpmap, nil
 }

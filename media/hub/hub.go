@@ -18,6 +18,7 @@ const (
 
 type MediaSpec struct {
 	MediaType MediaType
+	ClockRate uint32
 	CodecType string
 }
 
@@ -25,6 +26,7 @@ type Source interface {
 	Name() string
 	MediaSpecs() []MediaSpec
 	StreamID() string
+	Depth() int
 }
 
 // Hub 구조체: streamID별로 독립적으로 데이터를 관리하고, Pub/Sub 메커니즘을 지원합니다.

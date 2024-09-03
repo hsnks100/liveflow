@@ -102,6 +102,9 @@ func (w *WHEP) Start(ctx context.Context, source hub.Source) error {
 				}
 				w.lastVideoTimestamp = data.H264Video.DTS
 			}
+			if data.AACAudio != nil {
+				fmt.Println("it must transcoding")
+			}
 			if data.OPUSAudio != nil {
 				if w.audioTrack == nil {
 					var err error
