@@ -42,15 +42,15 @@ const (
 type Name string
 
 const (
-	WebM Name = "webm"
-	MP4  Name = "mp4"
-	MKV  Name = "mkv"
+	ContainerWebM Name = "webm"
+	ContainerMP4  Name = "mp4"
+	ContainerMKV  Name = "mkv"
 
 	Default Name = "default" // Record 에서 특별하게 사용
 )
 const durationElement = "Duration"
 
-type webmMuxer struct {
+type WebmMuxer struct {
 	writers         []mkvcore.BlockWriteCloser
 	container       Name
 	tempFileName    string
@@ -60,8 +60,8 @@ type webmMuxer struct {
 	duration        int64
 }
 
-func NewWebmMuxer(sampleRate int, channels int, container Name) *webmMuxer {
-	return &webmMuxer{
+func NewWebmMuxer(sampleRate int, channels int, container Name) *WebmMuxer {
+	return &WebmMuxer{
 		writers:         nil,
 		tempFileName:    "",
 		audioSampleRate: float64(sampleRate),
@@ -72,7 +72,7 @@ func NewWebmMuxer(sampleRate int, channels int, container Name) *webmMuxer {
 	}
 }
 
-func (w *webmMuxer) makeWebmWriters() ([]mkvcore.BlockWriteCloser, error) {
+func (w *WebmMuxer) makeWebmWriters() ([]mkvcore.BlockWriteCloser, error) {
 	tempFile, err := os.CreateTemp("", "*.webm")
 	if err != nil {
 		return nil, err
@@ -133,7 +133,7 @@ func (w *webmMuxer) makeWebmWriters() ([]mkvcore.BlockWriteCloser, error) {
 	return mkvWriters, nil
 }
 
-func (w *webmMuxer) makeMKVWriters() ([]mkvcore.BlockWriteCloser, error) {
+func (w *WebmMuxer) makeMKVWriters() ([]mkvcore.BlockWriteCloser, error) {
 	tempFile, err := os.CreateTemp("./", "*.mkv")
 	if err != nil {
 		return nil, err
@@ -196,12 +196,12 @@ func (w *webmMuxer) makeMKVWriters() ([]mkvcore.BlockWriteCloser, error) {
 	return mkvWriters, nil
 }
 
-func (w *webmMuxer) Init(_ context.Context) error {
+func (w *WebmMuxer) Init(_ context.Context) error {
 	var err error
 	switch w.container {
-	case WebM:
+	case ContainerWebM:
 		w.writers, err = w.makeWebmWriters()
-	case MKV:
+	case ContainerMKV:
 		w.writers, err = w.makeMKVWriters()
 	default:
 		return errInitFailed
@@ -209,11 +209,11 @@ func (w *webmMuxer) Init(_ context.Context) error {
 	return err
 }
 
-func (w *webmMuxer) Initialized() bool {
+func (w *WebmMuxer) Initialized() bool {
 	return len(w.writers) > 0
 }
 
-func (w *webmMuxer) WriteVideo(data []byte, keyframe bool, pts uint64, _ uint64) error {
+func (w *WebmMuxer) WriteVideo(data []byte, keyframe bool, pts uint64, _ uint64) error {
 	if _, err := w.writers[webmVideoStream].Write(keyframe, int64(pts), data); err != nil {
 		return err
 	}
@@ -223,7 +223,7 @@ func (w *webmMuxer) WriteVideo(data []byte, keyframe bool, pts uint64, _ uint64)
 	return nil
 }
 
-func (w *webmMuxer) WriteAudio(data []byte, keyframe bool, pts uint64, _ uint64) error {
+func (w *WebmMuxer) WriteAudio(data []byte, keyframe bool, pts uint64, _ uint64) error {
 	if _, err := w.writers[webmAudioStream].Write(keyframe, int64(pts), data); err != nil {
 		return err
 	}
@@ -233,7 +233,7 @@ func (w *webmMuxer) WriteAudio(data []byte, keyframe bool, pts uint64, _ uint64)
 	return nil
 }
 
-func (w *webmMuxer) Finalize(ctx context.Context) error {
+func (w *WebmMuxer) Finalize(ctx context.Context) error {
 	defer func() {
 		w.cleanup()
 	}()
@@ -250,11 +250,11 @@ func (w *webmMuxer) Finalize(ctx context.Context) error {
 	return nil
 }
 
-func (w *webmMuxer) ContainerName() string {
+func (w *WebmMuxer) ContainerName() string {
 	return string(w.container)
 }
 
-func (w *webmMuxer) overwritePTS(ctx context.Context, fileName string) error {
+func (w *WebmMuxer) overwritePTS(ctx context.Context, fileName string) error {
 	tempFile, err := os.OpenFile(fileName, os.O_RDWR, 0o600)
 	if err != nil {
 		return err
@@ -271,7 +271,7 @@ func (w *webmMuxer) overwritePTS(ctx context.Context, fileName string) error {
 	return nil
 }
 
-func (w *webmMuxer) cleanup() {
+func (w *WebmMuxer) cleanup() {
 	w.writers = nil
 	w.tempFileName = ""
 	w.duration = 0

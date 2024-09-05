@@ -16,6 +16,25 @@ type Repeater struct {
 	hub *hub.Hub
 }
 
+func (r *Repeater) Name() string {
+	return "repeater"
+}
+
+func (r *Repeater) MediaSpecs() []hub.MediaSpec {
+	//TODO implement me
+	panic("implement me")
+}
+
+func (r *Repeater) StreamID() string {
+	//TODO implement me
+	panic("implement me")
+}
+
+func (r *Repeater) Depth() int {
+	//TODO implement me
+	panic("implement me")
+}
+
 type RepeaterArgs struct {
 	Hub *hub.Hub
 }
@@ -34,10 +53,10 @@ func (r *Repeater) Start(ctx context.Context, source hub.Source) error {
 	log.Info(ctx, "start Repeater")
 	sub := r.hub.Subscribe(source.StreamID())
 
-	//go func() {
-	//	for data := range sub {
-	//		r.hub.Publish(source.StreamID(), data)
-	//	}
-	//}()
+	go func() {
+		for data := range sub {
+			r.hub.Publish(source.StreamID(), data)
+		}
+	}()
 	return nil
 }

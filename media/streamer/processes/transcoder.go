@@ -6,21 +6,37 @@ import (
 	"fmt"
 	astiav "liveflow/goastiav"
 	"liveflow/log"
-	"liveflow/media/hub"
 	"liveflow/media/streamer/pipe"
 )
 
-type TranscodingProcess struct {
-	pipe.BaseProcess[hub.AACAudio, []*hub.OPUSAudio]
-	codecID         astiav.CodecID
+type MediaPacket struct {
+	Data []byte
+	PTS  int64
+	DTS  int64
+}
+type AudioTranscodingProcess struct {
+	pipe.BaseProcess[*MediaPacket, []*MediaPacket]
+	decCodecID      astiav.CodecID
+	encCodecID      astiav.CodecID
 	decCodec        *astiav.Codec
 	decCodecContext *astiav.CodecContext
 	encCodec        *astiav.Codec
 	encCodecContext *astiav.CodecContext
+
+	audioFifo *astiav.AudioFifo
+	lastPts   int64
+	//nbSamples int
 }
 
-func (t *TranscodingProcess) Init() error {
-	t.decCodec = astiav.FindDecoder(t.codecID)
+func NewTranscodingProcess(decCodecID astiav.CodecID, encCodecID astiav.CodecID) *AudioTranscodingProcess {
+	return &AudioTranscodingProcess{
+		decCodecID: decCodecID,
+		encCodecID: encCodecID,
+	}
+}
+
+func (t *AudioTranscodingProcess) Init() error {
+	t.decCodec = astiav.FindDecoder(t.decCodecID)
 	if t.decCodec == nil {
 		return errors.New("codec is nil")
 	}
@@ -32,7 +48,13 @@ func (t *TranscodingProcess) Init() error {
 		return err
 	}
 
-	t.encCodec = astiav.FindEncoder(astiav.CodecIDOpus)
+	//t.encCodec = astiav.FindEncoder(t.encCodecID)
+	// 으아...FLTP 로 인코딩 해야하는구나... ㅠㅠ
+	if t.encCodecID == astiav.CodecIDOpus {
+		t.encCodec = astiav.FindEncoderByName("opus")
+	} else {
+		t.encCodec = astiav.FindEncoder(t.encCodecID)
+	}
 	if t.encCodec == nil {
 		return errors.New("codec is nil")
 	}
@@ -41,18 +63,11 @@ func (t *TranscodingProcess) Init() error {
 		return errors.New("codec context is nil")
 	}
 	if t.decCodecContext.MediaType() == astiav.MediaTypeAudio {
-		if v := t.encCodec.ChannelLayouts(); len(v) > 0 {
-			t.encCodecContext.SetChannelLayout(v[0])
-		} else {
-			t.encCodecContext.SetChannelLayout(t.decCodecContext.ChannelLayout())
-		}
-		t.encCodecContext.SetSampleRate(t.decCodecContext.SampleRate())
-		if v := t.encCodec.SampleFormats(); len(v) > 0 {
-			t.encCodecContext.SetSampleFormat(v[0])
-		} else {
-			t.encCodecContext.SetSampleFormat(t.decCodecContext.SampleFormat())
-		}
-		t.encCodecContext.SetTimeBase(astiav.NewRational(1, t.encCodecContext.SampleRate()))
+		t.encCodecContext.SetChLayoutDefault(2) // astiav.ChannelLayoutStereo)
+		t.encCodecContext.SetSampleRate(48000)
+		t.encCodecContext.SetSampleFormat(astiav.SampleFormatFltp) // t.encCodec.SampleFormats()[0])
+		t.encCodecContext.SetBitRate(64000)
+		//t.encCodecContext.SetTimeBase(astiav.NewRational(1, t.encCodecContext.SampleRate()))
 	} else {
 		t.encCodecContext.SetHeight(t.decCodecContext.Height())
 		if v := t.encCodec.PixelFormats(); len(v) > 0 {
@@ -65,10 +80,16 @@ func (t *TranscodingProcess) Init() error {
 		t.encCodecContext.SetTimeBase(astiav.NewRational(frameRate.Den(), frameRate.Num()))
 		t.encCodecContext.SetWidth(t.decCodecContext.Width())
 	}
+	dict := astiav.NewDictionary()
+	dict.Set("strict", "-2", 0)
+	if err := t.encCodecContext.Open(t.encCodec, dict); err != nil {
+		return err
+	}
+	fmt.Println("framesize2 : ", t.encCodecContext.FrameSize())
 	return nil
 }
 
-func (t *TranscodingProcess) Process(data hub.AACAudio) ([]*hub.OPUSAudio, error) {
+func (t *AudioTranscodingProcess) Process(data *MediaPacket) ([]*MediaPacket, error) {
 	ctx := context.Background()
 	packet := astiav.AllocPacket()
 	//defer packet.Free()
@@ -76,13 +97,23 @@ func (t *TranscodingProcess) Process(data hub.AACAudio) ([]*hub.OPUSAudio, error
 	if err != nil {
 		log.Error(ctx, err, "failed to create packet")
 	}
+	packet.SetPts(data.PTS)
+	packet.SetDts(data.DTS)
 	err = t.decCodecContext.SendPacket(packet)
 	if err != nil {
 		log.Error(ctx, err, "failed to send packet")
 	}
-	var opusAudio []*hub.OPUSAudio
+	//t.audioFifo = astiav.Alloc
+	if t.audioFifo == nil {
+		t.audioFifo = astiav.AllocAudioFifo(
+			t.encCodecContext.SampleFormat(),
+			t.encCodecContext.ChannelLayout().Channels(),
+			t.encCodecContext.SampleRate())
+	}
+	var opusAudio []*MediaPacket
 	for {
 		frame := astiav.AllocFrame()
+		defer frame.Free()
 		err := t.decCodecContext.ReceiveFrame(frame)
 		if errors.Is(err, astiav.ErrEof) {
 			fmt.Println("EOF: ", err.Error())
@@ -90,28 +121,51 @@ func (t *TranscodingProcess) Process(data hub.AACAudio) ([]*hub.OPUSAudio, error
 		} else if errors.Is(err, astiav.ErrEagain) {
 			break
 		}
-
-		// Encode data
-		err = t.encCodecContext.SendFrame(frame)
-		if err != nil {
-			log.Error(ctx, err, "failed to send frame")
-		}
-		for {
-			pkt := astiav.AllocPacket()
-			err := t.encCodecContext.ReceivePacket(pkt)
-			if errors.Is(err, astiav.ErrEof) {
-				fmt.Println("EOF: ", err.Error())
-				break
-			} else if errors.Is(err, astiav.ErrEagain) {
-				break
+		t.audioFifo.AvAudioFifoWrite(frame.DataPtr(), frame.NbSamples())
+		nbSamples := 0
+		for t.audioFifo.AvAudioFifoSize() >= t.encCodecContext.FrameSize() {
+			frameToSend := astiav.AllocFrame()
+			frameToSend.SetNbSamples(t.encCodecContext.FrameSize())
+			frameToSend.SetChannelLayout(t.encCodecContext.ChannelLayout()) // t.encCodecContext.ChannelLayout())
+			frameToSend.SetSampleFormat(t.encCodecContext.SampleFormat())
+			frameToSend.SetSampleRate(t.encCodecContext.SampleRate())
+			frameToSend.SetPts(t.lastPts + int64(t.encCodecContext.FrameSize()))
+			t.lastPts = frameToSend.Pts()
+			nbSamples += frame.NbSamples()
+			err := frameToSend.AllocBuffer(0)
+			if err != nil {
+				log.Error(ctx, err, "failed to alloc buffer")
 			}
-			opusAudio = append(opusAudio, &hub.OPUSAudio{
-				PTS:            pkt.Pts(),
-				DTS:            pkt.Dts(),
-				Data:           pkt.Data(),
-				AudioClockRate: uint32(t.encCodecContext.SampleRate()),
-			})
+			read := t.audioFifo.AvAudioFifoRead(frameToSend.DataPtr(), frameToSend.NbSamples())
+			if read < frameToSend.NbSamples() {
+				log.Error(ctx, err, "failed to read fifo")
+			}
+			// Encode the frame
+			err = t.encCodecContext.SendFrame(frameToSend)
+			if err != nil {
+				log.Error(ctx, err, "failed to send frame")
+			}
+			for {
+				pkt := astiav.AllocPacket()
+				defer pkt.Free()
+				err := t.encCodecContext.ReceivePacket(pkt)
+				if errors.Is(err, astiav.ErrEof) {
+					fmt.Println("EOF: ", err.Error())
+					break
+				} else if errors.Is(err, astiav.ErrEagain) {
+					break
+				}
+				opusAudio = append(opusAudio, &MediaPacket{
+					Data: pkt.Data(),
+					PTS:  pkt.Pts(),
+					DTS:  pkt.Dts(),
+				})
+			}
 		}
+	}
+	select {
+	case t.ResultChan() <- opusAudio:
+	default:
 	}
 	return opusAudio, nil
 }

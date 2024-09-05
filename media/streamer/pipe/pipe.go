@@ -2,7 +2,6 @@ package pipe
 
 import (
 	"fmt"
-	"strconv"
 	"sync"
 	"time"
 )
@@ -21,6 +20,14 @@ type BaseProcess[T any, U any] struct {
 	timeout     time.Duration
 	initialized bool
 	initOnce    sync.Once
+	resultChan  chan U
+}
+
+func (bp *BaseProcess[T, U]) ResultChan() chan U {
+	if bp.resultChan == nil {
+		bp.resultChan = make(chan U, 1)
+	}
+	return bp.resultChan
 }
 
 func (bp *BaseProcess[T, U]) SetTimeout(timeout time.Duration) {
@@ -122,47 +129,6 @@ func (pe *PipeExecutor[T]) startMonitoring() {
 
 func (pe *PipeExecutor[T]) StopMonitoring() {
 	close(pe.stopChan)
-}
-
-type AProcess struct {
-	BaseProcess[int, float64]
-}
-
-func (a *AProcess) Init() {
-	fmt.Println("AProcess initialized")
-}
-
-func (a *AProcess) Process(data int) float64 {
-	time.Sleep(50 * time.Millisecond) // Simulating processing time
-	return float64(data) + 0.5
-}
-
-// BProcess struct (float64 -> string)
-type BProcess struct {
-	BaseProcess[float64, string]
-}
-
-func (b *BProcess) Init() {
-	fmt.Println("BProcess initialized")
-}
-
-func (b *BProcess) Process(data float64) string {
-	time.Sleep(100 * time.Millisecond) // Simulating processing time
-	return strconv.FormatFloat(data, 'f', 2, 64)
-}
-
-// CProcess struct (string -> string)
-type CProcess struct {
-	BaseProcess[string, string]
-}
-
-func (c *CProcess) Init() {
-	fmt.Println("CProcess initialized")
-}
-
-func (c *CProcess) Process(data string) string {
-	time.Sleep(150 * time.Millisecond) // Simulating processing time
-	return data + " processed"
 }
 
 func LinkProcesses[T any, U any, V any](a ProcessInterface[T, U], b ProcessInterface[U, V]) {

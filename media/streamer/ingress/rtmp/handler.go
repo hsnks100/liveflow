@@ -35,6 +35,9 @@ type Handler struct {
 
 	mediaSpecs     []hub.MediaSpec
 	notifiedSource bool
+
+	MPEG4AudioConfigBytes []byte
+	MPEG4AudioConfig      *aacparser.MPEG4AudioConfig
 }
 
 func (h *Handler) Depth() int {
@@ -171,10 +174,16 @@ func (h *Handler) OnAudio(timestamp uint32, payload io.Reader) error {
 			log.Error(ctx, err, "failed to NewCodecDataFromMPEG4AudioConfigBytes")
 			return err
 		}
+		h.MPEG4AudioConfig = &codecData.Config
+		h.MPEG4AudioConfigBytes = codecData.MPEG4AudioConfigBytes()
 		frameData.AACAudio.MPEG4AudioConfig = &codecData.Config
 		frameData.AACAudio.MPEG4AudioConfigBytes = codecData.MPEG4AudioConfigBytes()
+		frameData.AACAudio.SequenceHeader = true
 	case flvtag.AACPacketTypeRaw:
 		frameData.AACAudio.Data = flvBody.Bytes()
+		frameData.AACAudio.MPEG4AudioConfig = h.MPEG4AudioConfig
+		frameData.AACAudio.MPEG4AudioConfigBytes = h.MPEG4AudioConfigBytes
+		frameData.AACAudio.SequenceHeader = false
 	}
 	h.hub.Publish(h.streamID, &frameData)
 	return nil

@@ -79,6 +79,7 @@ func (a *OPUSAudio) RawDTS() int64 {
 
 type AACAudio struct {
 	Data                  []byte
+	SequenceHeader        bool
 	MPEG4AudioConfigBytes []byte
 	MPEG4AudioConfig      *aacparser.MPEG4AudioConfig
 	PTS                   int64

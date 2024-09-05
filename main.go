@@ -14,7 +14,6 @@ import (
 	"liveflow/media/hlshub"
 	"liveflow/media/hub"
 	"liveflow/media/streamer/egress/hls"
-	"liveflow/media/streamer/egress/record/mp4"
 	"liveflow/media/streamer/egress/whep"
 	"liveflow/media/streamer/ingress/rtmp"
 	"liveflow/media/streamer/ingress/whip"
@@ -94,7 +93,7 @@ func main() {
 		go func() {
 			api.Start("0.0.0.0:8044")
 		}()
-		// ingress 의 rtmp, whip 서비스로부터 streamID를 받아 HLS, MP4, WHEP 서비스 시작
+		// ingress 의 rtmp, whip 서비스로부터 streamID를 받아 HLS, ContainerMP4, WHEP 서비스 시작
 		for source := range hub.SubscribeToStreamID() {
 			log.Infof(ctx, "New streamID received: %s", source.StreamID())
 			hls := hls.NewHLS(hls.HLSArgs{
@@ -105,10 +104,10 @@ func main() {
 			if err != nil {
 				log.Errorf(ctx, "failed to start hls: %v", err)
 			}
-			mp4 := mp4.NewMP4(mp4.MP4Args{
-				Hub: hub,
-			})
-			err = mp4.Start(ctx, source)
+			//mp4 := mp4.NewMP4(mp4.MP4Args{
+			//	Hub: hub,
+			//})
+			//err = mp4.Start(ctx, source)
 			if err != nil {
 				log.Errorf(ctx, "failed to start mp4: %v", err)
 			}
@@ -120,7 +119,7 @@ func main() {
 			if err != nil {
 				log.Errorf(ctx, "failed to start whep: %v", err)
 			}
-			webmStarter := webm.NewWEBM(webm.WEBMArgs{
+			webmStarter := webm.NewWEBM(webm.WebMArgs{
 				Hub: hub,
 			})
 			err = webmStarter.Start(ctx, source)

@@ -8,11 +8,7 @@ import (
 	"image"
 	"image/jpeg"
 	"io"
-	astiav "liveflow/goastiav"
-	"liveflow/media/streamer/pipe"
-	"liveflow/media/streamer/processes"
 	"os"
-	"time"
 
 	"github.com/deepch/vdk/codec/aacparser"
 	"github.com/sirupsen/logrus"
@@ -90,9 +86,6 @@ type MP4 struct {
 	mpeg4AudioConfigBytes []byte
 	mpeg4AudioConfig      *aacparser.MPEG4AudioConfig
 	//
-
-	decodingProcessor *processes.VideoDecodingProcess
-	i                 image.Image
 }
 
 type MP4Args struct {
@@ -101,8 +94,7 @@ type MP4Args struct {
 
 func NewMP4(args MP4Args) *MP4 {
 	return &MP4{
-		hub:               args.Hub,
-		decodingProcessor: processes.NewVideoDecodingProcess(astiav.CodecIDH264),
+		hub: args.Hub,
 	}
 }
 
@@ -138,7 +130,6 @@ func (h *MP4) Start(ctx context.Context, source hub.Source) error {
 	log.Info(ctx, "start mp4")
 	sub := h.hub.Subscribe(source.StreamID())
 
-	h.decodingProcessor.Init()
 	go func() {
 		var err error
 		mp4File, err := os.CreateTemp("./", "*.mp4")
@@ -159,14 +150,6 @@ func (h *MP4) Start(ctx context.Context, source hub.Source) error {
 		}
 		h.muxer = muxer
 
-		aProcess := processes.NewVideoDecodingProcess(astiav.CodecIDH264)
-		aProcess.SetTimeout(500 * time.Millisecond)
-		bProcess := processes.NewDumpProcess()
-		bProcess.SetTimeout(500 * time.Millisecond)
-		pipe.LinkProcesses[hub.H264Video, []*astiav.Frame, interface{}](aProcess, bProcess)
-		//starter := pipe.MakeStarter(aProcess)
-		pipeExecutor := pipe.NewPipeExecutor[hub.H264Video, []*astiav.Frame](aProcess, 5000*time.Millisecond)
-
 		for data := range sub {
 			if data.AACAudio != nil {
 				log.Debug(ctx, "AACAudio: ", data.AACAudio.RawPTS())
@@ -186,8 +169,6 @@ func (h *MP4) Start(ctx context.Context, source hub.Source) error {
 				if err != nil {
 					log.Error(ctx, err, "failed to write video")
 				}
-
-				pipeExecutor.Execute(*data.H264Video)
 			}
 			if data.AACAudio != nil {
 				if !h.hasAudio {
