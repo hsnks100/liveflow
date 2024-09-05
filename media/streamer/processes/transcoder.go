@@ -4,9 +4,10 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	astiav "liveflow/goastiav"
 	"liveflow/log"
 	"liveflow/media/streamer/pipe"
+
+	astiav "github.com/asticode/go-astiav"
 )
 
 type MediaPacket struct {
@@ -68,7 +69,7 @@ func (t *AudioTranscodingProcess) Init() error {
 		return errors.New("codec context is nil")
 	}
 	if t.decCodecContext.MediaType() == astiav.MediaTypeAudio {
-		t.encCodecContext.SetChLayoutDefault(2) // astiav.ChannelLayoutStereo)
+		t.encCodecContext.SetChannelLayout(astiav.ChannelLayoutStereo)
 		t.encCodecContext.SetSampleRate(t.encSampleRate)
 		t.encCodecContext.SetSampleFormat(astiav.SampleFormatFltp) // t.encCodec.SampleFormats()[0])
 		t.encCodecContext.SetBitRate(64000)
@@ -125,9 +126,9 @@ func (t *AudioTranscodingProcess) Process(data *MediaPacket) ([]*MediaPacket, er
 		} else if errors.Is(err, astiav.ErrEagain) {
 			break
 		}
-		t.audioFifo.AudioFifoWrite(frame.DataPtr(), frame.NbSamples())
+		t.audioFifo.Write(frame)
 		nbSamples := 0
-		for t.audioFifo.AudioFifoSize() >= t.encCodecContext.FrameSize() {
+		for t.audioFifo.Size() >= t.encCodecContext.FrameSize() {
 			frameToSend := astiav.AllocFrame()
 			frameToSend.SetNbSamples(t.encCodecContext.FrameSize())
 			frameToSend.SetChannelLayout(t.encCodecContext.ChannelLayout()) // t.encCodecContext.ChannelLayout())
@@ -140,7 +141,10 @@ func (t *AudioTranscodingProcess) Process(data *MediaPacket) ([]*MediaPacket, er
 			if err != nil {
 				log.Error(ctx, err, "failed to alloc buffer")
 			}
-			read := t.audioFifo.AudioFifoRead(frameToSend.DataPtr(), frameToSend.NbSamples())
+			read, err := t.audioFifo.Read(frameToSend)
+			if err != nil {
+				log.Error(ctx, err, "failed to read fifo")
+			}
 			if read < frameToSend.NbSamples() {
 				log.Error(ctx, err, "failed to read fifo")
 			}

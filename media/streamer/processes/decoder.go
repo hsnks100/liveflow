@@ -4,10 +4,11 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	astiav "liveflow/goastiav"
 	"liveflow/log"
 	"liveflow/media/hub"
 	"liveflow/media/streamer/pipe"
+
+	astiav "github.com/asticode/go-astiav"
 )
 
 type VideoDecodingProcess struct {

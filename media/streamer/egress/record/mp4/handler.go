@@ -6,9 +6,10 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	astiav "liveflow/goastiav"
 	"liveflow/media/streamer/processes"
 	"os"
+
+	astiav "github.com/asticode/go-astiav"
 
 	"github.com/deepch/vdk/codec/aacparser"
 	"github.com/sirupsen/logrus"

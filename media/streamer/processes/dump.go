@@ -5,9 +5,10 @@ import (
 	"fmt"
 	"image"
 	"image/jpeg"
-	astiav "liveflow/goastiav"
 	"liveflow/media/streamer/pipe"
 	"os"
+
+	astiav "github.com/asticode/go-astiav"
 )
 
 type DumpProcess struct {

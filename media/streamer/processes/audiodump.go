@@ -3,8 +3,9 @@ package processes
 import (
 	"context"
 	"image"
-	astiav "liveflow/goastiav"
 	"liveflow/media/streamer/pipe"
+
+	astiav "github.com/asticode/go-astiav"
 )
 
 type AudioDumpProcess struct {

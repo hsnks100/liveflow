@@ -4,8 +4,9 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	astiav "liveflow/goastiav"
 	"liveflow/media/streamer/processes"
+
+	astiav "github.com/asticode/go-astiav"
 
 	"github.com/deepch/vdk/codec/aacparser"
 	"github.com/pion/rtp"

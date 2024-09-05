@@ -3,8 +3,8 @@ module liveflow
 go 1.21
 
 require (
-	github.com/asticode/go-astiav v0.18.0
-	github.com/asticode/go-astikit v0.42.0
+	github.com/asticode/go-astiav v0.19.0
+	github.com/asticode/go-astikit v0.43.0
 	github.com/bluenviron/gohlslib v1.4.0
 	github.com/deepch/vdk v0.0.27
 	github.com/labstack/echo/v4 v4.12.0
