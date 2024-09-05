@@ -10,9 +10,10 @@ import (
 )
 
 type MediaPacket struct {
-	Data []byte
-	PTS  int64
-	DTS  int64
+	Data       []byte
+	PTS        int64
+	DTS        int64
+	SampleRate int
 }
 type AudioTranscodingProcess struct {
 	pipe.BaseProcess[*MediaPacket, []*MediaPacket]
@@ -22,16 +23,18 @@ type AudioTranscodingProcess struct {
 	decCodecContext *astiav.CodecContext
 	encCodec        *astiav.Codec
 	encCodecContext *astiav.CodecContext
+	encSampleRate   int
 
 	audioFifo *astiav.AudioFifo
 	lastPts   int64
 	//nbSamples int
 }
 
-func NewTranscodingProcess(decCodecID astiav.CodecID, encCodecID astiav.CodecID) *AudioTranscodingProcess {
+func NewTranscodingProcess(decCodecID astiav.CodecID, encCodecID astiav.CodecID, encSampleRate int) *AudioTranscodingProcess {
 	return &AudioTranscodingProcess{
-		decCodecID: decCodecID,
-		encCodecID: encCodecID,
+		decCodecID:    decCodecID,
+		encCodecID:    encCodecID,
+		encSampleRate: encSampleRate,
 	}
 }
 
@@ -66,7 +69,7 @@ func (t *AudioTranscodingProcess) Init() error {
 	}
 	if t.decCodecContext.MediaType() == astiav.MediaTypeAudio {
 		t.encCodecContext.SetChLayoutDefault(2) // astiav.ChannelLayoutStereo)
-		t.encCodecContext.SetSampleRate(48000)
+		t.encCodecContext.SetSampleRate(t.encSampleRate)
 		t.encCodecContext.SetSampleFormat(astiav.SampleFormatFltp) // t.encCodec.SampleFormats()[0])
 		t.encCodecContext.SetBitRate(64000)
 		//t.encCodecContext.SetTimeBase(astiav.NewRational(1, t.encCodecContext.SampleRate()))
@@ -157,9 +160,10 @@ func (t *AudioTranscodingProcess) Process(data *MediaPacket) ([]*MediaPacket, er
 					break
 				}
 				opusAudio = append(opusAudio, &MediaPacket{
-					Data: pkt.Data(),
-					PTS:  pkt.Pts(),
-					DTS:  pkt.Dts(),
+					Data:       pkt.Data(),
+					PTS:        pkt.Pts(),
+					DTS:        pkt.Dts(),
+					SampleRate: t.encCodecContext.SampleRate(),
 				})
 			}
 		}

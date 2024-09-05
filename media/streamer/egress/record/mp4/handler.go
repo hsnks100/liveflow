@@ -5,8 +5,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"image"
-	"image/jpeg"
 	"io"
 	astiav "liveflow/goastiav"
 	"liveflow/media/streamer/processes"
@@ -24,6 +22,10 @@ import (
 var (
 	ErrNotContainAudioOrVideo = errors.New("media spec does not contain audio or video")
 	ErrUnsupportedCodec       = errors.New("unsupported codec")
+)
+
+const (
+	audioSampleRate = 48000
 )
 
 type cacheWriterSeeker struct {
@@ -86,7 +88,6 @@ type MP4 struct {
 	audioIndex            uint32
 	mpeg4AudioConfigBytes []byte
 	mpeg4AudioConfig      *aacparser.MPEG4AudioConfig
-	//
 }
 
 type MP4Args struct {
@@ -111,17 +112,15 @@ func (m *MP4) Start(ctx context.Context, source hub.Source) error {
 		fields.SourceName: source.Name(),
 	})
 	var audioTranscodingProcess *processes.AudioTranscodingProcess
-	var audioConfigBytes []byte
-	var audioConfig *aacparser.MPEG4AudioConfig
 	if hub.HasCodecType(source.MediaSpecs(), hub.CodecTypeOpus) {
-		audioTranscodingProcess = processes.NewTranscodingProcess(astiav.CodecIDOpus, astiav.CodecIDAac)
+		audioTranscodingProcess = processes.NewTranscodingProcess(astiav.CodecIDOpus, astiav.CodecIDAac, audioSampleRate)
 		audioTranscodingProcess.Init()
-		audioConfigBytes = audioTranscodingProcess.ExtraData()
-		tmpAudioCodec, err := aacparser.NewCodecDataFromMPEG4AudioConfigBytes(audioConfigBytes)
+		m.mpeg4AudioConfigBytes = audioTranscodingProcess.ExtraData()
+		tmpAudioCodec, err := aacparser.NewCodecDataFromMPEG4AudioConfigBytes(m.mpeg4AudioConfigBytes)
 		if err != nil {
 			return err
 		}
-		audioConfig = &tmpAudioCodec.Config
+		m.mpeg4AudioConfig = &tmpAudioCodec.Config
 	}
 	log.Info(ctx, "start mp4")
 	sub := m.hub.Subscribe(source.StreamID())
@@ -147,31 +146,13 @@ func (m *MP4) Start(ctx context.Context, source hub.Source) error {
 
 		for data := range sub {
 			if data.H264Video != nil {
-				m.OnVideo(ctx, data.H264Video)
+				m.onVideo(ctx, data.H264Video)
 			}
 			if data.OPUSAudio != nil {
-				packets, err := audioTranscodingProcess.Process(&processes.MediaPacket{
-					Data: data.OPUSAudio.Data,
-					PTS:  data.OPUSAudio.PTS,
-					DTS:  data.OPUSAudio.DTS,
-				})
-				if err != nil {
-					fmt.Println(err)
-				}
-				for _, packet := range packets {
-					m.OnAudio(ctx, &hub.AACAudio{
-						Data:                  packet.Data,
-						SequenceHeader:        false,
-						MPEG4AudioConfigBytes: audioConfigBytes,
-						MPEG4AudioConfig:      audioConfig,
-						PTS:                   packet.PTS,
-						DTS:                   packet.DTS,
-						AudioClockRate:        48000,
-					})
-				}
+				m.onOPUSAudio(ctx, audioTranscodingProcess, data.OPUSAudio)
 			} else {
 				if data.AACAudio != nil {
-					m.OnAudio(ctx, data.AACAudio)
+					m.onAudio(ctx, data.AACAudio)
 				}
 			}
 		}
@@ -183,7 +164,7 @@ func (m *MP4) Start(ctx context.Context, source hub.Source) error {
 	return nil
 }
 
-func (m *MP4) OnVideo(ctx context.Context, h264Video *hub.H264Video) {
+func (m *MP4) onVideo(ctx context.Context, h264Video *hub.H264Video) {
 	if !m.hasVideo {
 		m.hasVideo = true
 		m.videoIndex = m.muxer.AddVideoTrack(gomp4.MP4_CODEC_H264)
@@ -196,7 +177,7 @@ func (m *MP4) OnVideo(ctx context.Context, h264Video *hub.H264Video) {
 	}
 }
 
-func (m *MP4) OnAudio(ctx context.Context, aacAudio *hub.AACAudio) {
+func (m *MP4) onAudio(ctx context.Context, aacAudio *hub.AACAudio) {
 	if !m.hasAudio {
 		m.hasAudio = true
 		m.audioIndex = m.muxer.AddAudioTrack(gomp4.MP4_CODEC_AAC)
@@ -223,15 +204,24 @@ func (m *MP4) OnAudio(ctx context.Context, aacAudio *hub.AACAudio) {
 	}
 }
 
-func saveAsJPEG(img image.Image, filename string) error {
-	file, err := os.Create(filename)
+func (m *MP4) onOPUSAudio(ctx context.Context, audioTranscodingProcess *processes.AudioTranscodingProcess, opusAudio *hub.OPUSAudio) {
+	packets, err := audioTranscodingProcess.Process(&processes.MediaPacket{
+		Data: opusAudio.Data,
+		PTS:  opusAudio.PTS,
+		DTS:  opusAudio.DTS,
+	})
 	if err != nil {
-		return err
+		fmt.Println(err)
 	}
-	defer file.Close()
-
-	options := &jpeg.Options{
-		Quality: 90, // JPEG 품질 (1~100)
+	for _, packet := range packets {
+		m.onAudio(ctx, &hub.AACAudio{
+			Data:                  packet.Data,
+			SequenceHeader:        false,
+			MPEG4AudioConfigBytes: m.mpeg4AudioConfigBytes,
+			MPEG4AudioConfig:      m.mpeg4AudioConfig,
+			PTS:                   packet.PTS,
+			DTS:                   packet.DTS,
+			AudioClockRate:        uint32(packet.SampleRate),
+		})
 	}
-	return jpeg.Encode(file, img, options)
 }

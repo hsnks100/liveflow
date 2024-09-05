@@ -27,7 +27,6 @@ const (
 
 	trackNameVideo  = "Video"
 	trackNameAudio  = "Audio"
-	audioSampleRate = 48000
 	defaultDuration = 600_000
 	defaultTimecode = 1_000_000
 )

@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"fmt"
 	"liveflow/media/streamer/egress/record/mp4"
 	"liveflow/media/streamer/egress/record/webm"
 
@@ -19,48 +18,6 @@ import (
 	"liveflow/media/streamer/ingress/rtmp"
 	"liveflow/media/streamer/ingress/whip"
 )
-
-//func main() {
-//
-//	var decCodec *astiav.Codec
-//	var decCodecContext *astiav.CodecContext
-//	var decFrame *astiav.Frame
-//	decCodec = astiav.FindDecoder(astiav.CodecIDH264)
-//	if decCodec == nil {
-//		err := fmt.Errorf("main: codec is nil")
-//		fmt.Println(err)
-//	}
-//	decCodecContext = astiav.AllocCodecContext(decCodec)
-//	if decCodecContext == nil {
-//		err := fmt.Errorf("main: codec context is nil")
-//		fmt.Println(err)
-//	}
-//	if err := decCodecContext.Open(decCodec, nil); err != nil {
-//		fmt.Println(err)
-//	}
-//	pkt := astiav.AllocPacket()
-//	defer pkt.Free()
-//
-//	var h264Data []byte
-//	file, err := os.Open("test.h264")
-//	if err != nil {
-//		fmt.Println(err)
-//	}
-//	defer file.Close()
-//	h264Data, err = io.ReadAll(file)
-//	if err != nil {
-//		fmt.Println(err)
-//	}
-//	err = pkt.FromData(h264Data)
-//	if err != nil {
-//		fmt.Println(err)
-//	}
-//	err = decCodecContext.SendPacket(pkt)
-//	if err != nil {
-//		fmt.Println(err)
-//	}
-//	_ = decFrame
-//}
 
 // RTMP 받으면 자동으로 HLS 서비스 동작, 녹화 서비스까지~?
 func main() {
@@ -84,10 +41,6 @@ func main() {
 		api.HideBanner = true
 		hlsHub := hlshub.NewHLSHub()
 		hlsHandler := httpsrv.NewHandler(hlsHub)
-		api.GET("/health", func(c echo.Context) error {
-			fmt.Println("hello")
-			return c.String(200, "ok")
-		})
 		api.GET("/hls/:streamID/master.m3u8", hlsHandler.HandleMasterM3U8)
 		api.GET("/hls/:streamID/:playlistName/stream.m3u8", hlsHandler.HandleM3U8)
 		api.GET("/hls/:streamID/:playlistName/:resourceName", hlsHandler.HandleM3U8)

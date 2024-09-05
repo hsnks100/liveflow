@@ -139,7 +139,7 @@ func (h *Handler) OnSetDataFrame(timestamp uint32, data *rtmpmsg.NetStreamSetDat
 	return nil
 }
 
-func (h *Handler) OnAudio(timestamp uint32, payload io.Reader) error {
+func (h *Handler) onAudio(timestamp uint32, payload io.Reader) error {
 	ctx := context.Background()
 	var buf bytes.Buffer
 	_, err := io.Copy(&buf, payload)
@@ -189,7 +189,7 @@ func (h *Handler) OnAudio(timestamp uint32, payload io.Reader) error {
 	return nil
 }
 
-func (h *Handler) OnVideo(timestamp uint32, payload io.Reader) error {
+func (h *Handler) onVideo(timestamp uint32, payload io.Reader) error {
 	ctx := context.Background()
 
 	// payload 데이터를 버퍼에 읽어오기

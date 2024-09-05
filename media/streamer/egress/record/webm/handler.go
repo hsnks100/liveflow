@@ -20,6 +20,10 @@ var (
 	ErrUnsupportedCodec       = errors.New("unsupported codec")
 )
 
+const (
+	audioSampleRate = 48000
+)
+
 type WebMArgs struct {
 	Tracks map[string][]*webrtc.TrackLocalStaticRTP
 	Hub    *hub.Hub
@@ -61,17 +65,17 @@ func (w *WebM) Start(ctx context.Context, source hub.Source) error {
 	}
 	log.Info(ctx, "start webm")
 	sub := w.hub.Subscribe(source.StreamID())
-	aProcess := processes.NewTranscodingProcess(astiav.CodecIDAac, astiav.CodecIDOpus)
+	aProcess := processes.NewTranscodingProcess(astiav.CodecIDAac, astiav.CodecIDOpus, audioSampleRate)
 	aProcess.Init()
 	go func() {
 		for data := range sub {
 			if data.H264Video != nil {
-				w.OnVideo(ctx, muxer, data.H264Video)
+				w.onVideo(ctx, muxer, data.H264Video)
 			}
 			if data.AACAudio != nil {
-				w.OnAACAudio(ctx, muxer, data.AACAudio, aProcess)
+				w.onAACAudio(ctx, muxer, data.AACAudio, aProcess)
 			} else if data.OPUSAudio != nil {
-				w.OnAudio(ctx, muxer, data.OPUSAudio)
+				w.onAudio(ctx, muxer, data.OPUSAudio)
 			}
 		}
 		err = muxer.Finalize(ctx)
@@ -82,7 +86,7 @@ func (w *WebM) Start(ctx context.Context, source hub.Source) error {
 	return nil
 }
 
-func (w *WebM) OnVideo(ctx context.Context, muxer *WebmMuxer, data *hub.H264Video) {
+func (w *WebM) onVideo(ctx context.Context, muxer *WebmMuxer, data *hub.H264Video) {
 	keyFrame := data.SliceType == hub.SliceI
 	err := muxer.WriteVideo(data.Data, keyFrame, uint64(data.RawPTS()), uint64(data.RawDTS()))
 	if err != nil {
@@ -90,14 +94,14 @@ func (w *WebM) OnVideo(ctx context.Context, muxer *WebmMuxer, data *hub.H264Vide
 	}
 }
 
-func (w *WebM) OnAudio(ctx context.Context, muxer *WebmMuxer, data *hub.OPUSAudio) {
+func (w *WebM) onAudio(ctx context.Context, muxer *WebmMuxer, data *hub.OPUSAudio) {
 	err := muxer.WriteAudio(data.Data, false, uint64(data.RawPTS()), uint64(data.RawDTS()))
 	if err != nil {
 		log.Error(ctx, err, "failed to write audio")
 	}
 }
 
-func (w *WebM) OnAACAudio(ctx context.Context, muxer *WebmMuxer, aac *hub.AACAudio, transcodingProcess *processes.AudioTranscodingProcess) {
+func (w *WebM) onAACAudio(ctx context.Context, muxer *WebmMuxer, aac *hub.AACAudio, transcodingProcess *processes.AudioTranscodingProcess) {
 	if len(aac.Data) == 0 {
 		fmt.Println("no data")
 		return
@@ -123,11 +127,11 @@ func (w *WebM) OnAACAudio(ctx context.Context, muxer *WebmMuxer, aac *hub.AACAud
 		fmt.Println(err)
 	}
 	for _, packet := range packets {
-		w.OnAudio(ctx, muxer, &hub.OPUSAudio{
+		w.onAudio(ctx, muxer, &hub.OPUSAudio{
 			Data:           packet.Data,
 			PTS:            packet.PTS,
 			DTS:            packet.DTS,
-			AudioClockRate: audioSampleRate,
+			AudioClockRate: uint32(packet.SampleRate),
 		})
 	}
 }

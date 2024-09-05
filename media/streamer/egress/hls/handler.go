@@ -57,10 +57,10 @@ func (h *HLS) Start(ctx context.Context, source hub.Source) error {
 	go func() {
 		for data := range sub {
 			if data.AACAudio != nil {
-				h.OnAudio(ctx, source, data.AACAudio)
+				h.onAudio(ctx, source, data.AACAudio)
 			}
 			if data.H264Video != nil {
-				h.OnVideo(ctx, data.H264Video)
+				h.onVideo(ctx, data.H264Video)
 			}
 		}
 		fmt.Println("@@@ [HLS] end of streamID: ", source.StreamID())
@@ -68,7 +68,7 @@ func (h *HLS) Start(ctx context.Context, source hub.Source) error {
 	return nil
 }
 
-func (h *HLS) OnAudio(ctx context.Context, source hub.Source, aacAudio *hub.AACAudio) {
+func (h *HLS) onAudio(ctx context.Context, source hub.Source, aacAudio *hub.AACAudio) {
 	if len(aacAudio.MPEG4AudioConfigBytes) > 0 {
 		if h.muxer == nil {
 			muxer, err := h.makeMuxer(aacAudio.MPEG4AudioConfigBytes)
@@ -90,7 +90,7 @@ func (h *HLS) OnAudio(ctx context.Context, source hub.Source, aacAudio *hub.AACA
 	}
 }
 
-func (h *HLS) OnVideo(ctx context.Context, h264Video *hub.H264Video) {
+func (h *HLS) onVideo(ctx context.Context, h264Video *hub.H264Video) {
 	if h.muxer != nil {
 		au, _ := h264parser.SplitNALUs(h264Video.Data)
 		err := h.muxer.WriteH264(time.Now(), time.Duration(h264Video.RawDTS())*time.Millisecond, au)

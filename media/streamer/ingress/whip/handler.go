@@ -192,11 +192,11 @@ func (w *WebRTCHandler) OnTrack(track *webrtc.TrackRemote, receiver *webrtc.RTPR
 		}
 		if w.notifiedSource {
 			for _, videoPackets := range videoPacketsQueue {
-				w.OnVideo(ctx, videoPackets)
+				w.onVideo(ctx, videoPackets)
 			}
 			videoPacketsQueue = nil
 			for _, audioPackets := range audioPacketsQueue {
-				w.OnAudio(ctx, track.Codec().ClockRate, audioPackets)
+				w.onAudio(ctx, track.Codec().ClockRate, audioPackets)
 			}
 			audioPacketsQueue = nil
 		}
@@ -209,7 +209,7 @@ func (w *WebRTCHandler) OnClose(ctx context.Context) error {
 	return nil
 }
 
-func (w *WebRTCHandler) OnVideo(ctx context.Context, packets []*rtp.Packet) error {
+func (w *WebRTCHandler) onVideo(ctx context.Context, packets []*rtp.Packet) error {
 	var h264RTPParser = &codecs.H264Packet{}
 	payload := make([]byte, 0)
 	for _, pkt := range packets {
@@ -268,7 +268,7 @@ func (w *WebRTCHandler) OnVideo(ctx context.Context, packets []*rtp.Packet) erro
 	return nil
 }
 
-func (w *WebRTCHandler) OnAudio(ctx context.Context, clockRate uint32, packets []*rtp.Packet) error {
+func (w *WebRTCHandler) onAudio(ctx context.Context, clockRate uint32, packets []*rtp.Packet) error {
 	var opusRTPParser = &codecs.OpusPacket{}
 	payload := make([]byte, 0)
 	for _, pkt := range packets {
