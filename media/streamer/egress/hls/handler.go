@@ -57,38 +57,47 @@ func (h *HLS) Start(ctx context.Context, source hub.Source) error {
 	go func() {
 		for data := range sub {
 			if data.AACAudio != nil {
-				if len(data.AACAudio.MPEG4AudioConfigBytes) > 0 {
-					muxer, err := h.makeMuxer(data.AACAudio.MPEG4AudioConfigBytes)
-					if err != nil {
-						log.Error(ctx, err)
-					}
-					h.hlsHub.StoreMuxer(source.StreamID(), "pass", muxer)
-					err = muxer.Start()
-					if err != nil {
-						log.Error(ctx, err)
-					}
-					h.muxer = muxer
-				}
-				if h.muxer != nil {
-					audioData := make([]byte, len(data.AACAudio.Data))
-					copy(audioData, data.AACAudio.Data)
-					h.muxer.WriteMPEG4Audio(time.Now(), time.Duration(data.AACAudio.RawDTS())*time.Millisecond, [][]byte{audioData})
-				}
+				h.OnAudio(ctx, source, data.AACAudio)
 			}
 			if data.H264Video != nil {
-				if h.muxer != nil {
-					//fmt.Println("video time: ", time.Now(), "PTS: ", data.H264Video.RawDTS())
-					au, _ := h264parser.SplitNALUs(data.H264Video.Data)
-					err := h.muxer.WriteH264(time.Now(), time.Duration(data.H264Video.RawDTS())*time.Millisecond, au)
-					if err != nil {
-						log.Errorf(ctx, "failed to write h264: %v", err)
-					}
-				}
+				h.OnVideo(ctx, data.H264Video)
 			}
 		}
 		fmt.Println("@@@ [HLS] end of streamID: ", source.StreamID())
 	}()
 	return nil
+}
+
+func (h *HLS) OnAudio(ctx context.Context, source hub.Source, aacAudio *hub.AACAudio) {
+	if len(aacAudio.MPEG4AudioConfigBytes) > 0 {
+		if h.muxer == nil {
+			muxer, err := h.makeMuxer(aacAudio.MPEG4AudioConfigBytes)
+			if err != nil {
+				log.Error(ctx, err)
+			}
+			h.hlsHub.StoreMuxer(source.StreamID(), "pass", muxer)
+			err = muxer.Start()
+			if err != nil {
+				log.Error(ctx, err)
+			}
+			h.muxer = muxer
+		}
+	}
+	if h.muxer != nil {
+		audioData := make([]byte, len(aacAudio.Data))
+		copy(audioData, aacAudio.Data)
+		h.muxer.WriteMPEG4Audio(time.Now(), time.Duration(aacAudio.RawDTS())*time.Millisecond, [][]byte{audioData})
+	}
+}
+
+func (h *HLS) OnVideo(ctx context.Context, h264Video *hub.H264Video) {
+	if h.muxer != nil {
+		au, _ := h264parser.SplitNALUs(h264Video.Data)
+		err := h.muxer.WriteH264(time.Now(), time.Duration(h264Video.RawDTS())*time.Millisecond, au)
+		if err != nil {
+			log.Errorf(ctx, "failed to write h264: %v", err)
+		}
+	}
 }
 
 func (h *HLS) makeMuxer(extraData []byte) (*gohlslib.Muxer, error) {
