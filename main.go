@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"fmt"
+	"liveflow/media/streamer/egress/record/mp4"
 	"liveflow/media/streamer/egress/record/webm"
 
 	"github.com/labstack/echo/v4"
@@ -104,10 +105,10 @@ func main() {
 			if err != nil {
 				log.Errorf(ctx, "failed to start hls: %v", err)
 			}
-			//mp4 := mp4.NewMP4(mp4.MP4Args{
-			//	Hub: hub,
-			//})
-			//err = mp4.Start(ctx, source)
+			mp4 := mp4.NewMP4(mp4.MP4Args{
+				Hub: hub,
+			})
+			err = mp4.Start(ctx, source)
 			if err != nil {
 				log.Errorf(ctx, "failed to start mp4: %v", err)
 			}

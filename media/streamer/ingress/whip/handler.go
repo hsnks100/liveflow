@@ -92,14 +92,14 @@ func (w *WebRTCHandler) WaitTrackArgs(ctx context.Context, timeout time.Duration
 				w.mediaArgs = append(w.mediaArgs, hub.MediaSpec{
 					MediaType: hub.Audio,
 					ClockRate: args.ClockRate,
-					CodecType: strings.ToLower(audioSplits[1]),
+					CodecType: hub.CodecType(strings.ToLower(audioSplits[1])),
 				})
 			}
 			if len(videoSplits) > 1 {
 				w.mediaArgs = append(w.mediaArgs, hub.MediaSpec{
 					MediaType: hub.Video,
 					ClockRate: args.ClockRate,
-					CodecType: strings.ToLower(videoSplits[1]),
+					CodecType: hub.CodecType(strings.ToLower(videoSplits[1])),
 				})
 			}
 			if len(w.mediaArgs) == w.expectedTrackCount {

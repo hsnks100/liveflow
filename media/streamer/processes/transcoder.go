@@ -103,7 +103,6 @@ func (t *AudioTranscodingProcess) Process(data *MediaPacket) ([]*MediaPacket, er
 	if err != nil {
 		log.Error(ctx, err, "failed to send packet")
 	}
-	//t.audioFifo = astiav.Alloc
 	if t.audioFifo == nil {
 		t.audioFifo = astiav.AllocAudioFifo(
 			t.encCodecContext.SampleFormat(),

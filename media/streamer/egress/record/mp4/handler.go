@@ -37,7 +37,6 @@ func newCacheWriterSeeker(capacity int) *cacheWriterSeeker {
 }
 
 func (ws *cacheWriterSeeker) Write(p []byte) (n int, err error) {
-	fmt.Println("@@@ Write: ", len(p))
 	if cap(ws.buf)-ws.offset >= len(p) {
 		if len(ws.buf) < ws.offset+len(p) {
 			ws.buf = ws.buf[:ws.offset+len(p)]
@@ -99,30 +98,12 @@ func NewMP4(args MP4Args) *MP4 {
 }
 
 func (h *MP4) Start(ctx context.Context, source hub.Source) error {
-	containsAudio := false
-	containsVideo := false
-	audioCodec := ""
-	videoCodec := ""
-	for _, spec := range source.MediaSpecs() {
-		if spec.MediaType == hub.Audio {
-			containsAudio = true
-			audioCodec = spec.CodecType
-		}
-		if spec.MediaType == hub.Video {
-			containsVideo = true
-			videoCodec = spec.CodecType
-		}
-	}
-	if !containsVideo || !containsAudio {
-		return ErrNotContainAudioOrVideo
-	}
-	if audioCodec != "aac" {
+	if !hub.HasCodecType(source.MediaSpecs(), hub.CodecTypeAAC) {
 		return ErrUnsupportedCodec
 	}
-	if videoCodec != "h264" {
+	if !hub.HasCodecType(source.MediaSpecs(), hub.CodecTypeH264) {
 		return ErrUnsupportedCodec
 	}
-
 	ctx = log.WithFields(ctx, logrus.Fields{
 		fields.StreamID:   source.StreamID(),
 		fields.SourceName: source.Name(),
@@ -132,7 +113,7 @@ func (h *MP4) Start(ctx context.Context, source hub.Source) error {
 
 	go func() {
 		var err error
-		mp4File, err := os.CreateTemp("./", "*.mp4")
+		mp4File, err := os.CreateTemp("./", fmt.Sprintf("%s-*.mp4", source.StreamID()))
 		if err != nil {
 			fmt.Println(err)
 			return
@@ -151,18 +132,11 @@ func (h *MP4) Start(ctx context.Context, source hub.Source) error {
 		h.muxer = muxer
 
 		for data := range sub {
-			if data.AACAudio != nil {
-				log.Debug(ctx, "AACAudio: ", data.AACAudio.RawPTS())
-			}
-			if data.H264Video != nil {
-				log.Debug(ctx, "H264Video: ", data.H264Video.RawPTS())
-			}
 			if data.H264Video != nil {
 				if !h.hasVideo {
 					h.hasVideo = true
 					h.videoIndex = muxer.AddVideoTrack(gomp4.MP4_CODEC_H264)
 				}
-				//fmt.Println(hex.Dump(data.H264Video.Data))
 				videoData := make([]byte, len(data.H264Video.Data))
 				copy(videoData, data.H264Video.Data)
 				err = h.muxer.Write(h.videoIndex, videoData, uint64(data.H264Video.RawPTS()), uint64(data.H264Video.RawDTS()))
@@ -176,11 +150,9 @@ func (h *MP4) Start(ctx context.Context, source hub.Source) error {
 					h.audioIndex = muxer.AddAudioTrack(gomp4.MP4_CODEC_AAC)
 				}
 				if len(data.AACAudio.MPEG4AudioConfigBytes) > 0 {
-					fmt.Println("@@@ set mpeg4AudioConfigBytes")
 					h.mpeg4AudioConfigBytes = data.AACAudio.MPEG4AudioConfigBytes
 				}
 				if data.AACAudio.MPEG4AudioConfig != nil {
-					fmt.Println("@@@ set mpeg4AudioConfig")
 					h.mpeg4AudioConfig = data.AACAudio.MPEG4AudioConfig
 				}
 				if len(data.AACAudio.Data) > 0 && h.mpeg4AudioConfig != nil {

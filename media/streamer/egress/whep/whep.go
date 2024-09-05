@@ -55,30 +55,11 @@ func NewWHEP(args WHEPArgs) *WHEP {
 }
 
 func (w *WHEP) Start(ctx context.Context, source hub.Source) error {
-	containsAudio := false
-	containsVideo := false
-	audioCodec := ""
-	videoCodec := ""
-	for _, spec := range source.MediaSpecs() {
-		if spec.MediaType == hub.Audio {
-			containsAudio = true
-			audioCodec = spec.CodecType
-		}
-		if spec.MediaType == hub.Video {
-			containsVideo = true
-			videoCodec = spec.CodecType
-		}
+	if !hub.HasCodecType(source.MediaSpecs(), hub.CodecTypeOpus) && !hub.HasCodecType(source.MediaSpecs(), hub.CodecTypeAAC) {
+		return ErrUnsupportedCodec
 	}
-	if !containsVideo || !containsAudio {
-		return ErrNotContainAudioOrVideo
-	}
-	fmt.Println("audioCodec", audioCodec)
-	fmt.Println("videoCodec", videoCodec)
-	if audioCodec != "opus" && audioCodec != "aac" {
-		return fmt.Errorf("%w: %s", ErrUnsupportedCodec, audioCodec)
-	}
-	if videoCodec != "h264" {
-		return fmt.Errorf("%w: %s", ErrUnsupportedCodec, videoCodec)
+	if !hub.HasCodecType(source.MediaSpecs(), hub.CodecTypeH264) {
+		return ErrUnsupportedCodec
 	}
 	ctx = log.WithFields(ctx, logrus.Fields{
 		fields.StreamID:   source.StreamID(),
@@ -86,12 +67,6 @@ func (w *WHEP) Start(ctx context.Context, source hub.Source) error {
 	})
 	log.Info(ctx, "start whep")
 	sub := w.hub.Subscribe(source.StreamID())
-	//resultChan := aProcess.ResultChan()
-	//bProcess := processes.NewDumpProcess()
-	//bProcess.SetTimeout(500 * time.Millisecond)
-	//pipe.LinkProcesses[hub.H264Video, []*astiav.Frame, interface{}](aProcess, bProcess)
-	//starter := pipe.MakeStarter(aProcess)
-	//pipeExecutor := pipe.NewPipeExecutor[*processes.MediaPacket, []*processes.MediaPacket](aProcess, 5000*time.Millisecond)
 	aProcess := processes.NewTranscodingProcess(astiav.CodecIDAac, astiav.CodecIDOpus)
 	aProcess.Init()
 	go func() {
@@ -126,14 +101,16 @@ func (w *WHEP) OnVideo(source hub.Source, h264Video *hub.H264Video) {
 		)
 		w.videoPacketizer = rtp.NewPacketizer(mtu, h264PayloadType, ssrc, &codecs.H264Payloader{}, rtp.NewRandomSequencer(), h264Video.VideoClockRate)
 	}
-	duration := h264Video.DTS - w.lastVideoTimestamp
-	packets := w.videoPacketizer.Packetize(h264Video.Data, uint32(duration))
-	for _, p := range packets {
-		if err := w.videoTrack.WriteRTP(p); err != nil {
-			panic(err)
-		}
+
+	videoDuration := h264Video.DTS - w.lastVideoTimestamp
+	videoPackets := w.videoPacketizer.Packetize(h264Video.Data, uint32(videoDuration))
+
+	for _, packet := range videoPackets {
+		w.videoBuffer = append(w.videoBuffer, &packetWithTimestamp{packet: packet, timestamp: uint32(h264Video.RawDTS())})
 	}
+
 	w.lastVideoTimestamp = h264Video.DTS
+	w.syncAndSendPackets()
 }
 
 func (w *WHEP) OnAudio(source hub.Source, opusAudio *hub.OPUSAudio) {
@@ -151,17 +128,45 @@ func (w *WHEP) OnAudio(source hub.Source, opusAudio *hub.OPUSAudio) {
 		)
 		w.audioPacketizer = rtp.NewPacketizer(mtu, opusPayloadType, ssrc, &codecs.OpusPayloader{}, rtp.NewRandomSequencer(), opusAudio.AudioClockRate)
 	}
-	// TODO: /whep 요청 들어오면 거기서 트랙만들고 센더 만들고 등록해주기
-	duration := opusAudio.DTS - w.lastAudioTimestamp
-	packets := w.audioPacketizer.Packetize(opusAudio.Data, uint32(duration))
-	for _, p := range packets {
-		if err := w.audioTrack.WriteRTP(p); err != nil {
-			panic(err)
-		}
+
+	audioDuration := opusAudio.DTS - w.lastAudioTimestamp
+	audioPackets := w.audioPacketizer.Packetize(opusAudio.Data, uint32(audioDuration))
+
+	for _, packet := range audioPackets {
+		w.audioBuffer = append(w.audioBuffer, &packetWithTimestamp{packet: packet, timestamp: uint32(opusAudio.RawDTS())})
 	}
+
 	w.lastAudioTimestamp = opusAudio.DTS
+	w.syncAndSendPackets()
 }
 
+func (w *WHEP) syncAndSendPackets() {
+	for len(w.videoBuffer) > 0 && len(w.audioBuffer) > 0 {
+		videoPacket := w.videoBuffer[0]
+		audioPacket := w.audioBuffer[0]
+		// 뒤쳐지는 패킷을 버퍼에서 제거
+		if videoPacket.timestamp <= audioPacket.timestamp {
+			// 오디오가 더 빠르면 비디오를 버퍼에서 제거
+			w.videoBuffer = w.videoBuffer[1:]
+			if err := w.videoTrack.WriteRTP(videoPacket.packet); err != nil {
+				panic(err)
+			}
+		} else {
+			// 비디오가 더 빠르면 오디오를 버퍼에서 제거
+			w.audioBuffer = w.audioBuffer[1:]
+			if err := w.audioTrack.WriteRTP(audioPacket.packet); err != nil {
+				panic(err)
+			}
+		}
+	}
+}
+
+func abs(x int64) int64 {
+	if x < 0 {
+		return -x
+	}
+	return x
+}
 func (w *WHEP) OnAACAudio(ctx context.Context, source hub.Source, aac *hub.AACAudio, transcodingProcess *processes.AudioTranscodingProcess) {
 	if len(aac.Data) == 0 {
 		fmt.Println("no data")

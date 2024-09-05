@@ -41,27 +41,10 @@ func NewHLS(args HLSArgs) *HLS {
 }
 
 func (h *HLS) Start(ctx context.Context, source hub.Source) error {
-	containsAudio := false
-	containsVideo := false
-	audioCodec := ""
-	videoCodec := ""
-	for _, spec := range source.MediaSpecs() {
-		if spec.MediaType == hub.Audio {
-			containsAudio = true
-			audioCodec = spec.CodecType
-		}
-		if spec.MediaType == hub.Video {
-			containsVideo = true
-			videoCodec = spec.CodecType
-		}
-	}
-	if !containsVideo || !containsAudio {
-		return ErrNotContainAudioOrVideo
-	}
-	if audioCodec != "aac" {
+	if !hub.HasCodecType(source.MediaSpecs(), hub.CodecTypeAAC) {
 		return ErrUnsupportedCodec
 	}
-	if videoCodec != "h264" {
+	if !hub.HasCodecType(source.MediaSpecs(), hub.CodecTypeH264) {
 		return ErrUnsupportedCodec
 	}
 	ctx = log.WithFields(ctx, logrus.Fields{

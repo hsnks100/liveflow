@@ -9,6 +9,11 @@ import (
 	"liveflow/log"
 )
 
+var (
+	ErrNotFoundAudioClockRate = fmt.Errorf("audio clock rate not found")
+	ErrNotFoundVideoClockRate = fmt.Errorf("video clock rate not found")
+)
+
 type MediaType int
 
 const (
@@ -16,10 +21,19 @@ const (
 	Audio           = 2
 )
 
+type CodecType string
+
+const (
+	CodecTypeVP8  CodecType = "vp8"
+	CodecTypeH264 CodecType = "h264"
+	CodecTypeOpus CodecType = "opus"
+	CodecTypeAAC  CodecType = "aac"
+)
+
 type MediaSpec struct {
 	MediaType MediaType
 	ClockRate uint32
-	CodecType string
+	CodecType CodecType
 }
 
 type Source interface {
@@ -27,6 +41,33 @@ type Source interface {
 	MediaSpecs() []MediaSpec
 	StreamID() string
 	Depth() int
+}
+
+func HasCodecType(specs []MediaSpec, codecType CodecType) bool {
+	for _, spec := range specs {
+		if spec.CodecType == codecType {
+			return true
+		}
+	}
+	return false
+}
+
+func AudioClockRate(specs []MediaSpec) (uint32, error) {
+	for _, spec := range specs {
+		if spec.MediaType == Audio {
+			return spec.ClockRate, nil
+		}
+	}
+	return 0, ErrNotFoundAudioClockRate
+}
+
+func VideoClockRate(specs []MediaSpec) (uint32, error) {
+	for _, spec := range specs {
+		if spec.MediaType == Video {
+			return spec.ClockRate, nil
+		}
+	}
+	return 0, ErrNotFoundVideoClockRate
 }
 
 // Hub 구조체: streamID별로 독립적으로 데이터를 관리하고, Pub/Sub 메커니즘을 지원합니다.

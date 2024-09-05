@@ -39,47 +39,27 @@ func NewWEBM(args WebMArgs) *WebM {
 }
 
 func (w *WebM) Start(ctx context.Context, source hub.Source) error {
-	containsAudio := false
-	containsVideo := false
-	audioCodec := ""
-	videoCodec := ""
-	audioClockRate := 0
-	videoClockRate := 0
-	_ = videoClockRate
-	for _, spec := range source.MediaSpecs() {
-		if spec.MediaType == hub.Audio {
-			containsAudio = true
-			audioCodec = spec.CodecType
-			audioClockRate = int(spec.ClockRate)
-		}
-		if spec.MediaType == hub.Video {
-			containsVideo = true
-			videoCodec = spec.CodecType
-			videoClockRate = int(spec.ClockRate)
-		}
+	if !hub.HasCodecType(source.MediaSpecs(), hub.CodecTypeAAC) && !hub.HasCodecType(source.MediaSpecs(), hub.CodecTypeOpus) {
+		return ErrUnsupportedCodec
 	}
-	if !containsVideo || !containsAudio {
-		return ErrNotContainAudioOrVideo
+	if !hub.HasCodecType(source.MediaSpecs(), hub.CodecTypeH264) {
+		return ErrUnsupportedCodec
 	}
-	fmt.Println("audioCodec", audioCodec)
-	fmt.Println("videoCodec", videoCodec)
-	// allow opus or aac
-	if audioCodec != "opus" && audioCodec != "aac" {
-		return fmt.Errorf("%w: %s", ErrUnsupportedCodec, audioCodec)
+	audioClockRate, err := hub.AudioClockRate(source.MediaSpecs())
+	if err != nil {
+		return err
 	}
-	if videoCodec != "h264" {
-		return fmt.Errorf("%w: %s", ErrUnsupportedCodec, videoCodec)
-	}
+
 	ctx = log.WithFields(ctx, logrus.Fields{
 		fields.StreamID:   source.StreamID(),
 		fields.SourceName: source.Name(),
 	})
-	muxer := NewWebmMuxer(audioClockRate, 2, ContainerMKV)
-	err := muxer.Init(ctx)
+	muxer := NewEBMLMuxer(int(audioClockRate), 2, ContainerMKV)
+	err = muxer.Init(ctx)
 	if err != nil {
 		return err
 	}
-	log.Info(ctx, "start whep")
+	log.Info(ctx, "start webm")
 	sub := w.hub.Subscribe(source.StreamID())
 	aProcess := processes.NewTranscodingProcess(astiav.CodecIDAac, astiav.CodecIDOpus)
 	aProcess.Init()
@@ -104,7 +84,6 @@ func (w *WebM) Start(ctx context.Context, source hub.Source) error {
 
 func (w *WebM) OnVideo(ctx context.Context, muxer *WebmMuxer, data *hub.H264Video) {
 	keyFrame := data.SliceType == hub.SliceI
-	fmt.Println("video pts: ", data.RawPTS(), "dts: ", data.RawDTS())
 	err := muxer.WriteVideo(data.Data, keyFrame, uint64(data.RawPTS()), uint64(data.RawDTS()))
 	if err != nil {
 		log.Error(ctx, err, "failed to write video")
@@ -112,8 +91,6 @@ func (w *WebM) OnVideo(ctx context.Context, muxer *WebmMuxer, data *hub.H264Vide
 }
 
 func (w *WebM) OnAudio(ctx context.Context, muxer *WebmMuxer, data *hub.OPUSAudio) {
-	//fmt.Println("mkv pts: ", data.RawPTS(), "dts: ", data.RawDTS())
-	fmt.Println("audio pts: ", data.RawPTS(), "dts: ", data.RawDTS())
 	err := muxer.WriteAudio(data.Data, false, uint64(data.RawPTS()), uint64(data.RawDTS()))
 	if err != nil {
 		log.Error(ctx, err, "failed to write audio")

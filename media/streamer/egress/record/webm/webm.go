@@ -60,7 +60,7 @@ type WebmMuxer struct {
 	duration        int64
 }
 
-func NewWebmMuxer(sampleRate int, channels int, container Name) *WebmMuxer {
+func NewEBMLMuxer(sampleRate int, channels int, container Name) *WebmMuxer {
 	return &WebmMuxer{
 		writers:         nil,
 		tempFileName:    "",
