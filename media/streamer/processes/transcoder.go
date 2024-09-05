@@ -122,9 +122,9 @@ func (t *AudioTranscodingProcess) Process(data *MediaPacket) ([]*MediaPacket, er
 		} else if errors.Is(err, astiav.ErrEagain) {
 			break
 		}
-		t.audioFifo.AvAudioFifoWrite(frame.DataPtr(), frame.NbSamples())
+		t.audioFifo.AudioFifoWrite(frame.DataPtr(), frame.NbSamples())
 		nbSamples := 0
-		for t.audioFifo.AvAudioFifoSize() >= t.encCodecContext.FrameSize() {
+		for t.audioFifo.AudioFifoSize() >= t.encCodecContext.FrameSize() {
 			frameToSend := astiav.AllocFrame()
 			frameToSend.SetNbSamples(t.encCodecContext.FrameSize())
 			frameToSend.SetChannelLayout(t.encCodecContext.ChannelLayout()) // t.encCodecContext.ChannelLayout())
@@ -137,7 +137,7 @@ func (t *AudioTranscodingProcess) Process(data *MediaPacket) ([]*MediaPacket, er
 			if err != nil {
 				log.Error(ctx, err, "failed to alloc buffer")
 			}
-			read := t.audioFifo.AvAudioFifoRead(frameToSend.DataPtr(), frameToSend.NbSamples())
+			read := t.audioFifo.AudioFifoRead(frameToSend.DataPtr(), frameToSend.NbSamples())
 			if read < frameToSend.NbSamples() {
 				log.Error(ctx, err, "failed to read fifo")
 			}
