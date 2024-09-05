@@ -35,6 +35,10 @@ func NewTranscodingProcess(decCodecID astiav.CodecID, encCodecID astiav.CodecID)
 	}
 }
 
+func (t *AudioTranscodingProcess) ExtraData() []byte {
+	return t.encCodecContext.ExtraData()
+}
+
 func (t *AudioTranscodingProcess) Init() error {
 	t.decCodec = astiav.FindDecoder(t.decCodecID)
 	if t.decCodec == nil {
@@ -48,8 +52,6 @@ func (t *AudioTranscodingProcess) Init() error {
 		return err
 	}
 
-	//t.encCodec = astiav.FindEncoder(t.encCodecID)
-	// 으아...FLTP 로 인코딩 해야하는구나... ㅠㅠ
 	if t.encCodecID == astiav.CodecIDOpus {
 		t.encCodec = astiav.FindEncoderByName("opus")
 	} else {

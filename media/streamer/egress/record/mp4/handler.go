@@ -8,6 +8,8 @@ import (
 	"image"
 	"image/jpeg"
 	"io"
+	astiav "liveflow/goastiav"
+	"liveflow/media/streamer/processes"
 	"os"
 
 	"github.com/deepch/vdk/codec/aacparser"
@@ -97,8 +99,8 @@ func NewMP4(args MP4Args) *MP4 {
 	}
 }
 
-func (h *MP4) Start(ctx context.Context, source hub.Source) error {
-	if !hub.HasCodecType(source.MediaSpecs(), hub.CodecTypeAAC) {
+func (m *MP4) Start(ctx context.Context, source hub.Source) error {
+	if !hub.HasCodecType(source.MediaSpecs(), hub.CodecTypeAAC) && !hub.HasCodecType(source.MediaSpecs(), hub.CodecTypeOpus) {
 		return ErrUnsupportedCodec
 	}
 	if !hub.HasCodecType(source.MediaSpecs(), hub.CodecTypeH264) {
@@ -108,9 +110,21 @@ func (h *MP4) Start(ctx context.Context, source hub.Source) error {
 		fields.StreamID:   source.StreamID(),
 		fields.SourceName: source.Name(),
 	})
+	var audioTranscodingProcess *processes.AudioTranscodingProcess
+	var audioConfigBytes []byte
+	var audioConfig *aacparser.MPEG4AudioConfig
+	if hub.HasCodecType(source.MediaSpecs(), hub.CodecTypeOpus) {
+		audioTranscodingProcess = processes.NewTranscodingProcess(astiav.CodecIDOpus, astiav.CodecIDAac)
+		audioTranscodingProcess.Init()
+		audioConfigBytes = audioTranscodingProcess.ExtraData()
+		tmpAudioCodec, err := aacparser.NewCodecDataFromMPEG4AudioConfigBytes(audioConfigBytes)
+		if err != nil {
+			return err
+		}
+		audioConfig = &tmpAudioCodec.Config
+	}
 	log.Info(ctx, "start mp4")
-	sub := h.hub.Subscribe(source.StreamID())
-
+	sub := m.hub.Subscribe(source.StreamID())
 	go func() {
 		var err error
 		mp4File, err := os.CreateTemp("./", fmt.Sprintf("%s-*.mp4", source.StreamID()))
@@ -129,45 +143,35 @@ func (h *MP4) Start(ctx context.Context, source hub.Source) error {
 			fmt.Println(err)
 			return
 		}
-		h.muxer = muxer
+		m.muxer = muxer
 
 		for data := range sub {
 			if data.H264Video != nil {
-				if !h.hasVideo {
-					h.hasVideo = true
-					h.videoIndex = muxer.AddVideoTrack(gomp4.MP4_CODEC_H264)
-				}
-				videoData := make([]byte, len(data.H264Video.Data))
-				copy(videoData, data.H264Video.Data)
-				err = h.muxer.Write(h.videoIndex, videoData, uint64(data.H264Video.RawPTS()), uint64(data.H264Video.RawDTS()))
-				if err != nil {
-					log.Error(ctx, err, "failed to write video")
-				}
+				m.OnVideo(ctx, data.H264Video)
 			}
-			if data.AACAudio != nil {
-				if !h.hasAudio {
-					h.hasAudio = true
-					h.audioIndex = muxer.AddAudioTrack(gomp4.MP4_CODEC_AAC)
+			if data.OPUSAudio != nil {
+				packets, err := audioTranscodingProcess.Process(&processes.MediaPacket{
+					Data: data.OPUSAudio.Data,
+					PTS:  data.OPUSAudio.PTS,
+					DTS:  data.OPUSAudio.DTS,
+				})
+				if err != nil {
+					fmt.Println(err)
 				}
-				if len(data.AACAudio.MPEG4AudioConfigBytes) > 0 {
-					h.mpeg4AudioConfigBytes = data.AACAudio.MPEG4AudioConfigBytes
+				for _, packet := range packets {
+					m.OnAudio(ctx, &hub.AACAudio{
+						Data:                  packet.Data,
+						SequenceHeader:        false,
+						MPEG4AudioConfigBytes: audioConfigBytes,
+						MPEG4AudioConfig:      audioConfig,
+						PTS:                   packet.PTS,
+						DTS:                   packet.DTS,
+						AudioClockRate:        48000,
+					})
 				}
-				if data.AACAudio.MPEG4AudioConfig != nil {
-					h.mpeg4AudioConfig = data.AACAudio.MPEG4AudioConfig
-				}
-				if len(data.AACAudio.Data) > 0 && h.mpeg4AudioConfig != nil {
-					var audioData []byte
-					const (
-						aacSamples     = 1024
-						adtsHeaderSize = 7
-					)
-					adtsHeader := make([]byte, adtsHeaderSize)
-					aacparser.FillADTSHeader(adtsHeader, *h.mpeg4AudioConfig, aacSamples, len(data.AACAudio.Data))
-					audioData = append(adtsHeader, data.AACAudio.Data...)
-					err := h.muxer.Write(h.audioIndex, audioData, uint64(data.AACAudio.RawPTS()), uint64(data.AACAudio.RawDTS()))
-					if err != nil {
-						log.Error(ctx, err, "failed to write audio")
-					}
+			} else {
+				if data.AACAudio != nil {
+					m.OnAudio(ctx, data.AACAudio)
 				}
 			}
 		}
@@ -177,6 +181,46 @@ func (h *MP4) Start(ctx context.Context, source hub.Source) error {
 		}
 	}()
 	return nil
+}
+
+func (m *MP4) OnVideo(ctx context.Context, h264Video *hub.H264Video) {
+	if !m.hasVideo {
+		m.hasVideo = true
+		m.videoIndex = m.muxer.AddVideoTrack(gomp4.MP4_CODEC_H264)
+	}
+	videoData := make([]byte, len(h264Video.Data))
+	copy(videoData, h264Video.Data)
+	err := m.muxer.Write(m.videoIndex, videoData, uint64(h264Video.RawPTS()), uint64(h264Video.RawDTS()))
+	if err != nil {
+		log.Error(ctx, err, "failed to write video")
+	}
+}
+
+func (m *MP4) OnAudio(ctx context.Context, aacAudio *hub.AACAudio) {
+	if !m.hasAudio {
+		m.hasAudio = true
+		m.audioIndex = m.muxer.AddAudioTrack(gomp4.MP4_CODEC_AAC)
+	}
+	if len(aacAudio.MPEG4AudioConfigBytes) > 0 {
+		m.mpeg4AudioConfigBytes = aacAudio.MPEG4AudioConfigBytes
+	}
+	if aacAudio.MPEG4AudioConfig != nil {
+		m.mpeg4AudioConfig = aacAudio.MPEG4AudioConfig
+	}
+	if len(aacAudio.Data) > 0 && m.mpeg4AudioConfig != nil {
+		var audioData []byte
+		const (
+			aacSamples     = 1024
+			adtsHeaderSize = 7
+		)
+		adtsHeader := make([]byte, adtsHeaderSize)
+		aacparser.FillADTSHeader(adtsHeader, *m.mpeg4AudioConfig, aacSamples, len(aacAudio.Data))
+		audioData = append(adtsHeader, aacAudio.Data...)
+		err := m.muxer.Write(m.audioIndex, audioData, uint64(aacAudio.RawPTS()), uint64(aacAudio.RawDTS()))
+		if err != nil {
+			log.Error(ctx, err, "failed to write audio")
+		}
+	}
 }
 
 func saveAsJPEG(img image.Image, filename string) error {
