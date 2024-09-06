@@ -1,71 +1,88 @@
-# Liveflow
+# **Liveflow**
 
-**Liveflow** is a flexible and modular live streaming solution that supports various input and output formats. It is designed to handle real-time media streams efficiently, providing support for multiple input and output formats.
+**Liveflow** is a flexible and modular live streaming solution designed for efficient real-time media stream handling. It supports a wide range of input and output formats, making it adaptable to various streaming needs.
 
-## Features
+## **Features**
 
-- **Modular Design:** Each input and output module is independent, making it easy to extend and add new formats.
-- **Real-Time Processing:** Optimized for handling real-time media streams.
-- **FFmpeg Dependency:** Leverages the power of the FFmpeg library for media processing.
+- **Modular Architecture:** Each input and output module operates independently, allowing for easy extension and addition of new formats.
+- **Real-Time Processing:** Optimized for processing live media streams with minimal latency.
+- **Powered by FFmpeg:** Utilizes the robust FFmpeg library for comprehensive media processing capabilities.
 
-## Input and Output Formats
+## **Input and Output Formats**
 
 |            | **HLS** | **WHEP** | **MKV** | **MP4** |
 |------------|---------|----------|---------|---------|
 | **RTMP**   |    ✅    |    ✅    |    ✅    |    ✅    |
 | **WHIP**   |    ✅    |    ✅    |    ✅    |    ✅    |
 
+The system architecture can be visualized as follows:
 
-
-## Requirements
-
-- **FFmpeg**: This repository depends on FFmpeg. Please ensure FFmpeg is installed on your system.
-
-## Installation
-
-0. Make sure you have FFmpeg installed on your system. You can install FFmpeg using the following commands:
-
-### MAC
-```bash
-brew install ffmpeg # version 7
-git clone https://github.com/hsnks100/liveflow.git
-cd liveflow
-go build && ./liveflow 
 ```
-### Docker Compose
-```bash
-docker-compose up liveflow -d --force-recreate --build
++-------+         +-------+
+|       |         |       |
+| RTMP  |         |       |
+|Input  +-------> |       |
+|       |         |  Hub  |
++-------+         |       +-----> Outputs
+                  |       |       (WHEP,
++-------+         |       |       HLS, MP4, MKV)
+|       |         |       |
+| WHIP  +-------> |       |
+|Input  |         |       |
++-------+         +-------+
 ```
 
-## Usage
+## **Requirements**
 
-To start processing a stream:
+- **FFmpeg:** Ensure FFmpeg is installed on your system as Liveflow relies on it for media processing.
 
-You can select way to stream from the following options:
+## **Installation**
 
-### WHIP broadcast
-OBS 
-- server: http://127.0.0.1:5555/whip
-- bearer token: test
+### **macOS**
+1. Install FFmpeg:
+   ```bash
+   brew install ffmpeg # version 7
+   ```
+2. Clone and build the repository:
+   ```bash
+   git clone https://github.com/hsnks100/liveflow.git
+   cd liveflow
+   go build && ./liveflow 
+   ```
 
-### RTMP broadcast
-OBS
-- server: rtmp://127.0.0.1:1930/live
-- stream key: test
+### **Docker Compose**
+1. Run Liveflow using Docker Compose:
+   ```bash
+   docker-compose up liveflow -d --force-recreate --build
+   ```
 
-So, you can watch the stream from the following options:
-### HLS 
-- url: http://127.0.0.1:8044/hls/test/master.m3u8
+## **Usage**
 
-### WHEP
-- url: http://127.0.0.1:5555/ 
-- bearer token: test
-- click subscribe button.
+Start streaming by choosing from the following broadcast options:
 
-### MKV, MP4
-- docker: ~/.store
-- local: $(repo)/videos
+### **WHIP Broadcast**
+- **Server:** `http://127.0.0.1:5555/whip`
+- **Bearer Token:** `test`
 
-## License
+### **RTMP Broadcast**
+- **Server:** `rtmp://127.0.0.1:1930/live`
+- **Stream Key:** `test`
 
-This project is licensed under the MIT License. See the [LICENSE](LICENSE) file for more details.
+### **Stream Viewing Options**
+
+- **HLS:**
+    - URL: `http://127.0.0.1:8044/hls/test/master.m3u8`
+
+- **WHEP:**
+    - URL: `http://127.0.0.1:5555/`
+    - Bearer Token: `test`
+    - Click the **Subscribe** button.
+
+- **MKV, MP4:**
+    - **Docker:** `~/.store`
+    - **Local:** `$(repo)/videos`
+
+## **License**
+
+This project is licensed under the MIT License. For more details, see the [LICENSE](LICENSE) file.
+
