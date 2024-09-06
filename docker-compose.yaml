@@ -1,0 +1,19 @@
+# docker-compose
+version: "3.4"
+services:
+  liveflow:
+    image: liveflow_custom:latest
+    stdin_open: true # docker run -i
+    tty: true # docker run -t
+    volumes:
+      - "~/.store:/app/bin/videos"
+    ports:
+      - "8044:8044"
+      - "5555:5555"
+      - "1930:1930"
+      - "30000-31000:30000-31000/udp"
+    environment:
+      DOCKER_MODE: "true"
+    build:
+      context: ./
+      dockerfile: Dockerfile

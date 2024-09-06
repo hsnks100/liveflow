@@ -1,0 +1,125 @@
+<html>
+
+<!--
+      SPDX-FileCopyrightText: 2023 The Pion community <https://pion.ly>
+      SPDX-License-Identifier: MIT
+  -->
+<head>
+    <title>whip-whep</title>
+</head>
+
+<body>
+<button onclick="window.doWHIP()">Publish</button>
+<button onclick="window.doWHEP()">Subscribe</button>
+<!-- bearer token input -->
+<input type="text" id="bearerToken" placeholder="Bearer Token" />
+<h3> Video </h3>
+<video id="videoPlayer" autoplay muted controls style="width: 500"> </video>
+
+
+<h3> ICE Connection States </h3>
+<div id="iceConnectionStates"></div> <br />
+</body>
+
+<script>
+    let peerConnection = new RTCPeerConnection()
+
+    peerConnection.oniceconnectionstatechange = () => {
+        let el = document.createElement('p')
+        el.appendChild(document.createTextNode(peerConnection.iceConnectionState))
+
+        document.getElementById('iceConnectionStates').appendChild(el);
+    }
+
+    window.doWHEP = () => {
+        peerConnection.addTransceiver('video', { direction: 'recvonly' })
+        peerConnection.addTransceiver('audio', { direction: 'recvonly' })
+
+        peerConnection.ontrack = function (event) {
+            document.getElementById('videoPlayer').srcObject = event.streams[0]
+        }
+
+        peerConnection.createOffer().then(offer => {
+            peerConnection.setLocalDescription(offer);
+            let bearerToken = document.getElementById('bearerToken').value;
+
+            fetch(`/whep`, {
+                method: 'POST',
+                body: offer.sdp,
+                headers: {
+                    Authorization: `Bearer ${bearerToken}`,
+                    'Content-Type': 'application/sdp'
+                }
+            }).then(r => r.text())
+                .then(answer => {
+                    peerConnection.setRemoteDescription({
+                        sdp: answer,
+                        type: 'answer'
+                    })
+                })
+        })
+    }
+
+    window.doWHIP = () => {
+        navigator.mediaDevices.getUserMedia({ video: true, audio: true })
+            .then(stream => {
+                document.getElementById('videoPlayer').srcObject = stream
+                stream.getTracks().forEach(track => {
+                    let sender = peerConnection.addTrack(track, stream);
+                })
+
+                onChangeDefaultCodecs(peerConnection, "video/H264");
+                peerConnection.createOffer().then(offer => {
+                    // Modify SDP to prefer VP8
+                    // offer.sdp = offer.sdp.replace(
+                    //     /m=video\s(\d+)\s[A-Z/]+\s(\d+)/g,
+                    //     'm=video $1 RTP/SAVPF 96\r\n' +
+                    //     'a=rtpmap:96 VP8/90000\r\n'
+                    // );
+                    console.log("offer.sdp", offer.sdp);
+                    peerConnection.setLocalDescription(offer);
+
+                    let bearerToken = document.getElementById('bearerToken').value;
+                    fetch(`/whip`, {
+                        method: 'POST',
+                        body: offer.sdp,
+                        headers: {
+                            Authorization: `Bearer ${bearerToken}`,
+                            'Content-Type': 'application/sdp'
+                        }
+                    }).then(r => r.text())
+                        .then(answer => {
+                            peerConnection.setRemoteDescription({
+                                sdp: answer,
+                                type: 'answer'
+                            })
+                        })
+                })
+            })
+    }
+    function onChangeDefaultCodecs(pc, value) {
+        // 트랜시버 획득
+        // 0 : 오디오
+        // 1 : 비디오
+        const tcvr = pc.getTransceivers()[1];
+        // 현재 해당 브라우저에서 사용가능한 코덱종류
+        const codecs = RTCRtpReceiver.getCapabilities("video")?.codecs || [];
+        // 내가 새롭게 넣을 코덱 배열
+        const changeCodec = [];
+
+        console.log("codecs", codecs);
+        // 반복문을 돌면서 원하는 코덱의 이름 (예 : "video/H264")을 찾아 새롭게 넣을 코덱 배열에 추가
+        for (let i = 0; i < codecs.length; i++) {
+            if (codecs[i].mimeType === value) {
+                changeCodec.push(codecs[i]);
+            }
+        }
+
+        console.log(tcvr.setCodecPreferences);
+        if (tcvr.setCodecPreferences !== undefined) {
+            // 코덱 우선순위를 내가 새롭게 만든 배열로 설정해준다.
+            tcvr.setCodecPreferences(changeCodec);
+        }
+    };
+</script>
+</html>

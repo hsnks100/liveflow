@@ -1,0 +1,8 @@
+[whep]
+port = 5555
+[rtmp]
+port = 1930
+[hls]
+port = 8044
+[docker]
+mode = false
