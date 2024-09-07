@@ -139,7 +139,7 @@ func (h *Handler) OnSetDataFrame(timestamp uint32, data *rtmpmsg.NetStreamSetDat
 	return nil
 }
 
-func (h *Handler) onAudio(timestamp uint32, payload io.Reader) error {
+func (h *Handler) OnAudio(timestamp uint32, payload io.Reader) error {
 	ctx := context.Background()
 	var buf bytes.Buffer
 	_, err := io.Copy(&buf, payload)
@@ -189,7 +189,7 @@ func (h *Handler) onAudio(timestamp uint32, payload io.Reader) error {
 	return nil
 }
 
-func (h *Handler) onVideo(timestamp uint32, payload io.Reader) error {
+func (h *Handler) OnVideo(timestamp uint32, payload io.Reader) error {
 	ctx := context.Background()
 
 	// Read the payload data into a buffer
