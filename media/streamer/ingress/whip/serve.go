@@ -6,7 +6,6 @@ import (
 	"io"
 	"liveflow/log"
 	"net/http"
-	"strconv"
 	"strings"
 
 	"github.com/labstack/echo/v4"
@@ -36,14 +35,14 @@ type WHIP struct {
 	hub        *hub.Hub
 	tracks     map[string][]*webrtc.TrackLocalStaticRTP
 	dockerMode bool
-	port       int
+	echo       *echo.Echo
 }
 
 type WHIPArgs struct {
 	Hub        *hub.Hub
 	Tracks     map[string][]*webrtc.TrackLocalStaticRTP
 	DockerMode bool
-	Port       int
+	Echo       *echo.Echo
 }
 
 func NewWHIP(args WHIPArgs) *WHIP {
@@ -51,18 +50,15 @@ func NewWHIP(args WHIPArgs) *WHIP {
 		hub:        args.Hub,
 		tracks:     args.Tracks,
 		dockerMode: args.DockerMode,
-		port:       args.Port,
+		echo:       args.Echo,
 	}
 }
 
-func (r *WHIP) Serve() {
-	whipServer := echo.New()
-	whipServer.HideBanner = true
+func (r *WHIP) RegisterRoute() {
+	whipServer := r.echo
 	whipServer.Static("/", ".")
 	whipServer.POST("/whip", r.whipHandler)
 	whipServer.POST("/whep", r.whepHandler)
-	//whipServer.PATCH("/whip", whipHandler)
-	whipServer.Start(":" + strconv.Itoa(r.port))
 }
 
 func (r *WHIP) bearerToken(c echo.Context) (string, error) {

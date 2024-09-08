@@ -2,26 +2,16 @@ package config
 
 // Struct to hold the configuration
 type Config struct {
-	Monitor Monitor      `mapstructure:"monitor"`
-	Whep    Whep         `mapstructure:"whep"`
 	RTMP    RTMP         `mapstructure:"rtmp"`
-	HLS     HLS          `mapstructure:"hls"`
+	Service Service      `mapstructure:"service"`
 	Docker  DockerConfig `mapstructure:"docker"`
-}
-
-type Monitor struct {
-	Port int `mapstructure:"port"`
 }
 
 type RTMP struct {
 	Port int `mapstructure:"port"`
 }
 
-type Whep struct {
-	Port int `mapstructure:"port"`
-}
-
-type HLS struct {
+type Service struct {
 	Port    int  `mapstructure:"port"`
 	LLHLS   bool `mapstructure:"llhls"`
 	DiskRam bool `mapstructure:"disk_ram"`
