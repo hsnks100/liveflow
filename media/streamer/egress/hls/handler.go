@@ -37,21 +37,24 @@ type HLS struct {
 	mpeg4AudioConfigBytes []byte
 	mpeg4AudioConfig      *aacparser.MPEG4AudioConfig
 	llHLS                 bool
+	diskRam               bool
 }
 
 type HLSArgs struct {
-	Hub    *hub.Hub
-	HLSHub *hlshub.HLSHub
-	Port   int
-	LLHLS  bool
+	Hub     *hub.Hub
+	HLSHub  *hlshub.HLSHub
+	Port    int
+	LLHLS   bool
+	DiskRam bool
 }
 
 func NewHLS(args HLSArgs) *HLS {
 	return &HLS{
-		hub:    args.Hub,
-		hlsHub: args.HLSHub,
-		port:   args.Port,
-		llHLS:  args.LLHLS,
+		hub:     args.Hub,
+		hlsHub:  args.HLSHub,
+		port:    args.Port,
+		llHLS:   args.LLHLS,
+		diskRam: args.DiskRam,
 	}
 }
 
@@ -66,24 +69,25 @@ func (h *HLS) Start(ctx context.Context, source hub.Source) error {
 		fields.StreamID:   source.StreamID(),
 		fields.SourceName: source.Name(),
 	})
-	audioTranscodingProcess := processes.NewTranscodingProcess(astiav.CodecIDOpus, astiav.CodecIDAac, audioSampleRate)
-	if hub.HasCodecType(source.MediaSpecs(), hub.CodecTypeOpus) {
-		audioTranscodingProcess = processes.NewTranscodingProcess(astiav.CodecIDOpus, astiav.CodecIDAac, audioSampleRate)
-		audioTranscodingProcess.Init()
-		h.mpeg4AudioConfigBytes = audioTranscodingProcess.ExtraData()
-		tmpAudioCodec, err := aacparser.NewCodecDataFromMPEG4AudioConfigBytes(h.mpeg4AudioConfigBytes)
-		if err != nil {
-			return err
-		}
-		h.mpeg4AudioConfig = &tmpAudioCodec.Config
-	}
 	log.Info(ctx, "start hls")
 	log.Info(ctx, "view url: ", fmt.Sprintf("http://127.0.0.1:%d/hls/%s/master.m3u8", h.port, source.StreamID()))
 
 	sub := h.hub.Subscribe(source.StreamID())
 	go func() {
+		var audioTranscodingProcess *processes.AudioTranscodingProcess
 		for data := range sub {
 			if data.OPUSAudio != nil {
+				if audioTranscodingProcess == nil {
+					audioTranscodingProcess = processes.NewTranscodingProcess(astiav.CodecIDOpus, astiav.CodecIDAac, audioSampleRate)
+					audioTranscodingProcess.Init()
+					defer audioTranscodingProcess.Close()
+					h.mpeg4AudioConfigBytes = audioTranscodingProcess.ExtraData()
+					tmpAudioCodec, err := aacparser.NewCodecDataFromMPEG4AudioConfigBytes(h.mpeg4AudioConfigBytes)
+					if err != nil {
+						log.Error(ctx, err)
+					}
+					h.mpeg4AudioConfig = &tmpAudioCodec.Config
+				}
 				h.onOPUSAudio(ctx, source, audioTranscodingProcess, data.OPUSAudio)
 			} else {
 				if data.AACAudio != nil {
@@ -164,12 +168,18 @@ func (h *HLS) makeMuxer(extraData []byte) (*gohlslib.Muxer, error) {
 			Codec: mpeg4Audio,
 		}
 	}
+	var directory string
+	if h.diskRam {
+		directory = "/tmp"
+	}
 	muxer := &gohlslib.Muxer{
 		VideoTrack: &gohlslib.Track{
 			Codec: &codecs.H264{},
 		},
 		AudioTrack: audioTrack,
+		Directory:  directory,
 	}
+
 	if h.llHLS {
 		muxer.Variant = gohlslib.MuxerVariantLowLatency
 		muxer.PartDuration = 500 * time.Millisecond

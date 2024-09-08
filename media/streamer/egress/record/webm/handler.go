@@ -9,8 +9,7 @@ import (
 	"liveflow/media/streamer/fields"
 	"liveflow/media/streamer/processes"
 
-	astiav "github.com/asticode/go-astiav"
-
+	"github.com/asticode/go-astiav"
 	"github.com/deepch/vdk/codec/aacparser"
 	"github.com/pion/webrtc/v3"
 	"github.com/sirupsen/logrus"
@@ -64,14 +63,18 @@ func (w *WebM) Start(ctx context.Context, source hub.Source) error {
 	}
 	log.Info(ctx, "start webm")
 	sub := w.hub.Subscribe(source.StreamID())
-	audioTranscodingProcess := processes.NewTranscodingProcess(astiav.CodecIDAac, astiav.CodecIDOpus, audioSampleRate)
-	audioTranscodingProcess.Init()
 	go func() {
+		var audioTranscodingProcess *processes.AudioTranscodingProcess
 		for data := range sub {
 			if data.H264Video != nil {
 				w.onVideo(ctx, muxer, data.H264Video)
 			}
 			if data.AACAudio != nil {
+				if audioTranscodingProcess == nil {
+					audioTranscodingProcess = processes.NewTranscodingProcess(astiav.CodecIDAac, astiav.CodecIDOpus, audioSampleRate)
+					audioTranscodingProcess.Init()
+					defer audioTranscodingProcess.Close()
+				}
 				w.onAACAudio(ctx, muxer, data.AACAudio, audioTranscodingProcess)
 			} else if data.OPUSAudio != nil {
 				w.onAudio(ctx, muxer, data.OPUSAudio)

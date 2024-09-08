@@ -94,10 +94,22 @@ func (t *AudioTranscodingProcess) Init() error {
 	return nil
 }
 
+func (t *AudioTranscodingProcess) Close() {
+	if t.decCodecContext != nil {
+		t.decCodecContext.Free()
+	}
+	if t.encCodecContext != nil {
+		t.encCodecContext.Free()
+	}
+	if t.audioFifo != nil {
+		t.audioFifo.Free()
+	}
+}
+
 func (t *AudioTranscodingProcess) Process(data *MediaPacket) ([]*MediaPacket, error) {
 	ctx := context.Background()
 	packet := astiav.AllocPacket()
-	//defer packet.Free()
+	defer packet.Free()
 	err := packet.FromData(data.Data)
 	if err != nil {
 		log.Error(ctx, err, "failed to create packet")
@@ -129,6 +141,7 @@ func (t *AudioTranscodingProcess) Process(data *MediaPacket) ([]*MediaPacket, er
 		nbSamples := 0
 		for t.audioFifo.Size() >= t.encCodecContext.FrameSize() {
 			frameToSend := astiav.AllocFrame()
+			defer frameToSend.Free()
 			frameToSend.SetNbSamples(t.encCodecContext.FrameSize())
 			frameToSend.SetChannelLayout(t.encCodecContext.ChannelLayout()) // t.encCodecContext.ChannelLayout())
 			frameToSend.SetSampleFormat(t.encCodecContext.SampleFormat())
