@@ -1,9 +1,12 @@
+[monitor]
+port = 6060
 [whep]
 port = 5555
 [rtmp]
 port = 1930
 [hls]
 port = 8044
-llhls = true
+llhls = false
+disk_ram = true
 [docker]
 mode = false

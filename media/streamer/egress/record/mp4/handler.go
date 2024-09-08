@@ -114,17 +114,6 @@ func (m *MP4) Start(ctx context.Context, source hub.Source) error {
 		fields.StreamID:   source.StreamID(),
 		fields.SourceName: source.Name(),
 	})
-	var audioTranscodingProcess *processes.AudioTranscodingProcess
-	if hub.HasCodecType(source.MediaSpecs(), hub.CodecTypeOpus) {
-		audioTranscodingProcess = processes.NewTranscodingProcess(astiav.CodecIDOpus, astiav.CodecIDAac, audioSampleRate)
-		audioTranscodingProcess.Init()
-		m.mpeg4AudioConfigBytes = audioTranscodingProcess.ExtraData()
-		tmpAudioCodec, err := aacparser.NewCodecDataFromMPEG4AudioConfigBytes(m.mpeg4AudioConfigBytes)
-		if err != nil {
-			return err
-		}
-		m.mpeg4AudioConfig = &tmpAudioCodec.Config
-	}
 	log.Info(ctx, "start mp4")
 	sub := m.hub.Subscribe(source.StreamID())
 	go func() {
@@ -147,11 +136,23 @@ func (m *MP4) Start(ctx context.Context, source hub.Source) error {
 		}
 		m.muxer = muxer
 
+		var audioTranscodingProcess *processes.AudioTranscodingProcess
 		for data := range sub {
 			if data.H264Video != nil {
 				m.onVideo(ctx, data.H264Video)
 			}
 			if data.OPUSAudio != nil {
+				if audioTranscodingProcess == nil {
+					audioTranscodingProcess = processes.NewTranscodingProcess(astiav.CodecIDOpus, astiav.CodecIDAac, audioSampleRate)
+					audioTranscodingProcess.Init()
+					defer audioTranscodingProcess.Close()
+					m.mpeg4AudioConfigBytes = audioTranscodingProcess.ExtraData()
+					tmpAudioCodec, err := aacparser.NewCodecDataFromMPEG4AudioConfigBytes(m.mpeg4AudioConfigBytes)
+					if err != nil {
+						log.Error(ctx, err)
+					}
+					m.mpeg4AudioConfig = &tmpAudioCodec.Config
+				}
 				m.onOPUSAudio(ctx, audioTranscodingProcess, data.OPUSAudio)
 			} else {
 				if data.AACAudio != nil {

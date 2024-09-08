@@ -70,9 +70,8 @@ func (w *WHEP) Start(ctx context.Context, source hub.Source) error {
 	})
 	log.Info(ctx, "start whep")
 	sub := w.hub.Subscribe(source.StreamID())
-	aProcess := processes.NewTranscodingProcess(astiav.CodecIDAac, astiav.CodecIDOpus, audioSampleRate)
-	aProcess.Init()
 	go func() {
+		var audioTranscodingProcess *processes.AudioTranscodingProcess
 		for data := range sub {
 			if data.H264Video != nil {
 				err := w.onVideo(source, data.H264Video)
@@ -81,7 +80,12 @@ func (w *WHEP) Start(ctx context.Context, source hub.Source) error {
 				}
 			}
 			if data.AACAudio != nil {
-				err := w.onAACAudio(ctx, source, data.AACAudio, aProcess)
+				if audioTranscodingProcess == nil {
+					audioTranscodingProcess = processes.NewTranscodingProcess(astiav.CodecIDAac, astiav.CodecIDOpus, audioSampleRate)
+					audioTranscodingProcess.Init()
+					defer audioTranscodingProcess.Close()
+				}
+				err := w.onAACAudio(ctx, source, data.AACAudio, audioTranscodingProcess)
 				if err != nil {
 					log.Error(ctx, err, "failed to process AAC audio")
 				}
