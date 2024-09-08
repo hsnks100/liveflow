@@ -36,12 +36,14 @@ type HLS struct {
 	muxer                 *gohlslib.Muxer
 	mpeg4AudioConfigBytes []byte
 	mpeg4AudioConfig      *aacparser.MPEG4AudioConfig
+	llHLS                 bool
 }
 
 type HLSArgs struct {
 	Hub    *hub.Hub
 	HLSHub *hlshub.HLSHub
 	Port   int
+	LLHLS  bool
 }
 
 func NewHLS(args HLSArgs) *HLS {
@@ -49,6 +51,7 @@ func NewHLS(args HLSArgs) *HLS {
 		hub:    args.Hub,
 		hlsHub: args.HLSHub,
 		port:   args.Port,
+		llHLS:  args.LLHLS,
 	}
 }
 
@@ -167,8 +170,7 @@ func (h *HLS) makeMuxer(extraData []byte) (*gohlslib.Muxer, error) {
 		},
 		AudioTrack: audioTrack,
 	}
-	llHLS := false
-	if llHLS {
+	if h.llHLS {
 		muxer.Variant = gohlslib.MuxerVariantLowLatency
 		muxer.PartDuration = 500 * time.Millisecond
 	} else {

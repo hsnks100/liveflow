@@ -73,6 +73,7 @@ func main() {
 				Hub:    hub,
 				HLSHub: hlsHub,
 				Port:   conf.HLS.Port,
+				LLHLS:  conf.HLS.LLHLS,
 			})
 			err := hls.Start(ctx, source)
 			if err != nil {
