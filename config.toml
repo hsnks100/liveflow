@@ -4,5 +4,6 @@ port = 5555
 port = 1930
 [hls]
 port = 8044
+llhls = true
 [docker]
 mode = false
