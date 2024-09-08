@@ -39,6 +39,9 @@ func SetLevel(ctx context.Context, level logrus.Level) {
 
 func Init() {
 	//logrus.AddHook(&SkipHook{skip: 7})
+	logrus.SetFormatter(&logrus.TextFormatter{
+		FullTimestamp: true,
+	})
 }
 
 func SetFormatter(ctx context.Context, formatter logrus.Formatter) {
