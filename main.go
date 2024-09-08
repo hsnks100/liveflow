@@ -8,6 +8,7 @@ import (
 	"liveflow/media/streamer/egress/record/mp4"
 	"liveflow/media/streamer/egress/record/webm"
 	"liveflow/media/streamer/egress/whep"
+	"liveflow/media/streamer/ingress/whip"
 	"net/http"
 	"strconv"
 
@@ -24,10 +25,9 @@ import (
 	"liveflow/media/hlshub"
 	"liveflow/media/hub"
 	"liveflow/media/streamer/ingress/rtmp"
-	"liveflow/media/streamer/ingress/whip"
 )
 
-// RTMP 받으면 자동으로 HLS 서비스 동작, 녹화 서비스까지~?
+// RTMP 받으면 자동으로 Service 서비스 동작, 녹화 서비스까지~?
 func main() {
 	ctx := context.Background()
 	viper.SetConfigName("config") // name of config file (without extension)
@@ -44,13 +44,6 @@ func main() {
 		panic(fmt.Errorf("failed to unmarshal config: %w", err))
 	}
 	fmt.Printf("Config: %+v\n", conf)
-
-	go func() {
-		statsEcho := echo.New()
-		statsEcho.GET("/prometheus", echo.WrapHandler(promhttp.Handler()))
-		statsEcho.GET("/debug/pprof/*", echo.WrapHandler(http.DefaultServeMux))
-		statsEcho.Start(":" + strconv.Itoa(conf.Monitor.Port))
-	}()
 	log.Init()
 	//log.SetCaller(ctx, true)
 	//log.SetFormatter(ctx, &logrus.JSONFormatter{
@@ -70,13 +63,23 @@ func main() {
 		api.HideBanner = true
 		hlsHub := hlshub.NewHLSHub()
 		hlsHandler := httpsrv.NewHandler(hlsHub)
+		api.GET("/prometheus", echo.WrapHandler(promhttp.Handler()))
+		api.GET("/debug/pprof/*", echo.WrapHandler(http.DefaultServeMux))
 		api.GET("/hls/:streamID/master.m3u8", hlsHandler.HandleMasterM3U8)
 		api.GET("/hls/:streamID/:playlistName/stream.m3u8", hlsHandler.HandleM3U8)
 		api.GET("/hls/:streamID/:playlistName/:resourceName", hlsHandler.HandleM3U8)
+		whipServer := whip.NewWHIP(whip.WHIPArgs{
+			Hub:        hub,
+			Tracks:     tracks,
+			DockerMode: conf.Docker.Mode,
+			Echo:       api,
+		})
+		whipServer.RegisterRoute()
 		go func() {
-			api.Start("0.0.0.0:" + strconv.Itoa(conf.HLS.Port))
+			fmt.Println("----------------", conf.Service.Port)
+			api.Start("0.0.0.0:" + strconv.Itoa(conf.Service.Port))
 		}()
-		// ingress 의 rtmp, whip 서비스로부터 streamID를 받아 HLS, ContainerMP4, WHEP 서비스 시작
+		// ingress 의 rtmp, whip 서비스로부터 streamID를 받아 Service, ContainerMP4, WHEP 서비스 시작
 		for source := range hub.SubscribeToStreamID() {
 			log.Infof(ctx, "New streamID received: %s", source.StreamID())
 			mp4 := mp4.NewMP4(mp4.MP4Args{
@@ -96,9 +99,9 @@ func main() {
 			hls := hls.NewHLS(hls.HLSArgs{
 				Hub:     hub,
 				HLSHub:  hlsHub,
-				Port:    conf.HLS.Port,
-				LLHLS:   conf.HLS.LLHLS,
-				DiskRam: conf.HLS.DiskRam,
+				Port:    conf.Service.Port,
+				LLHLS:   conf.Service.LLHLS,
+				DiskRam: conf.Service.DiskRam,
 			})
 			err := hls.Start(ctx, source)
 			if err != nil {
@@ -115,13 +118,6 @@ func main() {
 		}
 	}()
 
-	whipServer := whip.NewWHIP(whip.WHIPArgs{
-		Hub:        hub,
-		Tracks:     tracks,
-		DockerMode: conf.Docker.Mode,
-		Port:       conf.Whep.Port,
-	})
-	go whipServer.Serve()
 	rtmpServer := rtmp.NewRTMP(rtmp.RTMPArgs{
 		Hub:  hub,
 		Port: conf.RTMP.Port,

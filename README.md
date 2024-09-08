@@ -60,8 +60,8 @@ The system architecture can be visualized as follows:
 
 Start streaming by choosing from the following broadcast options:
 
-### **WHIP Broadcast**
-- **Server:** `http://127.0.0.1:5555/whip`
+### **WHIP Broadcast (OBS >= 30.x)**
+- **Server:** `http://127.0.0.1:8044/whip`
 - **Bearer Token:** `test`
 
 ### **RTMP Broadcast**
@@ -74,7 +74,7 @@ Start streaming by choosing from the following broadcast options:
     - URL: `http://127.0.0.1:8044/hls/test/master.m3u8`
 
 - **WHEP:**
-    - URL: `http://127.0.0.1:5555/`
+    - URL: `http://127.0.0.1:8044/`
     - Bearer Token: `test`
     - Click the **Subscribe** button.
 
