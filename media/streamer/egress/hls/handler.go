@@ -70,7 +70,8 @@ func (h *HLS) Start(ctx context.Context, source hub.Source) error {
 		fields.SourceName: source.Name(),
 	})
 	log.Info(ctx, "start hls")
-	log.Info(ctx, "view url: ", fmt.Sprintf("http://127.0.0.1:%d/hls/%s/master.m3u8", h.port, source.StreamID()))
+	log.Info(ctx, "view url: ",
+		fmt.Sprintf("http://localhost:8044/m3u8player.html?streamid=%s", source.StreamID()))
 
 	sub := h.hub.Subscribe(source.StreamID())
 	go func() {
