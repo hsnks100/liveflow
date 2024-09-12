@@ -353,6 +353,7 @@ func (r *WHIP) whepHandler(c echo.Context) error {
 		fmt.Printf("ICE Connection State has changed: %s\n", connectionState.String())
 
 		if connectionState == webrtc.ICEConnectionStateFailed {
+			delete(r.tracks, streamKey)
 			_ = peerConnection.Close()
 		}
 	})
