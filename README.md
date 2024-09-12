@@ -72,6 +72,7 @@ Start streaming by choosing from the following broadcast options:
 
 - **HLS:**
     - URL: `http://127.0.0.1:8044/hls/test/master.m3u8`
+    - Viewer: `http://127.0.0.1:8044/m3u8player.html?streamid=test`
 
 - **WHEP:**
     - URL: `http://127.0.0.1:8044/`

@@ -10,11 +10,11 @@ import (
 	"liveflow/media/streamer/egress/whep"
 	"liveflow/media/streamer/ingress/whip"
 	"net/http"
+	_ "net/http/pprof" // pprof을 사용하기 위한 패키지
 	"strconv"
 
-	_ "net/http/pprof" // pprof을 사용하기 위한 패키지
-
 	"github.com/labstack/echo/v4"
+	"github.com/labstack/echo/v4/middleware"
 	"github.com/pion/webrtc/v3"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/sirupsen/logrus"
@@ -63,11 +63,16 @@ func main() {
 		api.HideBanner = true
 		hlsHub := hlshub.NewHLSHub()
 		hlsHandler := httpsrv.NewHandler(hlsHub)
+		hlsRoute := api.Group("/hls", middleware.CORSWithConfig(middleware.CORSConfig{
+			AllowOrigins: []string{"*"}, // Adjust origins as necessary
+			AllowMethods: []string{http.MethodGet, http.MethodHead, http.MethodOptions},
+		}))
 		api.GET("/prometheus", echo.WrapHandler(promhttp.Handler()))
 		api.GET("/debug/pprof/*", echo.WrapHandler(http.DefaultServeMux))
-		api.GET("/hls/:streamID/master.m3u8", hlsHandler.HandleMasterM3U8)
-		api.GET("/hls/:streamID/:playlistName/stream.m3u8", hlsHandler.HandleM3U8)
-		api.GET("/hls/:streamID/:playlistName/:resourceName", hlsHandler.HandleM3U8)
+		// Enable CORS only for /hls routes
+		hlsRoute.GET("/:streamID/master.m3u8", hlsHandler.HandleMasterM3U8)
+		hlsRoute.GET("/:streamID/:playlistName/stream.m3u8", hlsHandler.HandleM3U8)
+		hlsRoute.GET("/:streamID/:playlistName/:resourceName", hlsHandler.HandleM3U8)
 		whipServer := whip.NewWHIP(whip.WHIPArgs{
 			Hub:        hub,
 			Tracks:     tracks,
@@ -82,19 +87,23 @@ func main() {
 		// ingress 의 rtmp, whip 서비스로부터 streamID를 받아 Service, ContainerMP4, WHEP 서비스 시작
 		for source := range hub.SubscribeToStreamID() {
 			log.Infof(ctx, "New streamID received: %s", source.StreamID())
-			mp4 := mp4.NewMP4(mp4.MP4Args{
-				Hub: hub,
-			})
-			err = mp4.Start(ctx, source)
-			if err != nil {
-				log.Errorf(ctx, "failed to start mp4: %v", err)
+			if conf.MP4.Record {
+				mp4 := mp4.NewMP4(mp4.MP4Args{
+					Hub: hub,
+				})
+				err = mp4.Start(ctx, source)
+				if err != nil {
+					log.Errorf(ctx, "failed to start mp4: %v", err)
+				}
 			}
-			webmStarter := webm.NewWEBM(webm.WebMArgs{
-				Hub: hub,
-			})
-			err = webmStarter.Start(ctx, source)
-			if err != nil {
-				log.Errorf(ctx, "failed to start webm: %v", err)
+			if conf.EBML.Record {
+				webmStarter := webm.NewWEBM(webm.WebMArgs{
+					Hub: hub,
+				})
+				err = webmStarter.Start(ctx, source)
+				if err != nil {
+					log.Errorf(ctx, "failed to start webm: %v", err)
+				}
 			}
 			hls := hls.NewHLS(hls.HLSArgs{
 				Hub:     hub,

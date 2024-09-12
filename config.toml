@@ -6,3 +6,7 @@ llhls = false
 disk_ram = true
 [docker]
 mode = false
+[mp4]
+record=false
+[ebml]
+record=false

@@ -56,7 +56,7 @@ func NewWHIP(args WHIPArgs) *WHIP {
 
 func (r *WHIP) RegisterRoute() {
 	whipServer := r.echo
-	whipServer.Static("/", ".")
+	whipServer.Static("/", "static")
 	whipServer.POST("/whip", r.whipHandler)
 	whipServer.POST("/whep", r.whepHandler)
 }
