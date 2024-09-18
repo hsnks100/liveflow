@@ -89,7 +89,8 @@ func main() {
 			log.Infof(ctx, "New streamID received: %s", source.StreamID())
 			if conf.MP4.Record {
 				mp4 := mp4.NewMP4(mp4.MP4Args{
-					Hub: hub,
+					Hub:             hub,
+					SplitIntervalMS: 3000,
 				})
 				err = mp4.Start(ctx, source)
 				if err != nil {
@@ -98,7 +99,9 @@ func main() {
 			}
 			if conf.EBML.Record {
 				webmStarter := webm.NewWEBM(webm.WebMArgs{
-					Hub: hub,
+					Hub:             hub,
+					SplitIntervalMS: 6000,
+					StreamID:        source.StreamID(),
 				})
 				err = webmStarter.Start(ctx, source)
 				if err != nil {
