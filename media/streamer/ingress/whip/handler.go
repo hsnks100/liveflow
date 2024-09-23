@@ -4,11 +4,11 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"liveflow/media/streamer/ingress"
 	"net/http"
 	"strings"
 	"time"
 
-	"github.com/deepch/vdk/codec/h264parser"
 	"github.com/labstack/echo/v4"
 	"github.com/pion/rtp"
 	"github.com/pion/rtp/codecs"
@@ -227,30 +227,7 @@ func (w *WebRTCHandler) onVideo(ctx context.Context, packets []*rtp.Packet) erro
 		return nil
 	}
 	pts := w.videoTimestampGen.Generate(int64(packets[0].Timestamp))
-	nalus, _ := h264parser.SplitNALUs(payload)
-	var slice hub.SliceType
-	for _, nalu := range nalus {
-		if len(nalu) < 1 {
-			continue
-		}
-		nalUnitType := nalu[0] & 0x1f
-		switch nalUnitType {
-		case h264parser.NALU_SPS:
-			slice = hub.SliceSPS
-		case h264parser.NALU_PPS:
-			slice = hub.SlicePPS
-		default:
-			sliceType, _ := h264parser.ParseSliceHeaderFromNALU(nalu)
-			switch sliceType {
-			case h264parser.SLICE_I:
-				slice = hub.SliceI
-			case h264parser.SLICE_P:
-				slice = hub.SliceP
-			case h264parser.SLICE_B:
-				slice = hub.SliceB
-			}
-		}
-	}
+	sliceTypes := ingress.SliceTypes(payload)
 	w.hub.Publish(w.streamID, &hub.FrameData{
 		H264Video: &hub.H264Video{
 			PTS:            pts,
@@ -259,7 +236,7 @@ func (w *WebRTCHandler) onVideo(ctx context.Context, packets []*rtp.Packet) erro
 			Data:           payload,
 			SPS:            nil,
 			PPS:            nil,
-			SliceType:      slice,
+			SliceTypes:     sliceTypes,
 			CodecData:      nil,
 		},
 		AACAudio: nil,

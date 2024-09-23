@@ -5,6 +5,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"liveflow/media/streamer/ingress"
 	"os"
 	"path/filepath"
 
@@ -335,6 +336,7 @@ func (h *Handler) publishVideoData(timestamp uint32, compositionTime int32, vide
 	dts := int64(timestamp)
 	pts := int64(compositionTime) + dts
 
+	sliceTypes := ingress.SliceTypes(videoDataToSend)
 	h.hub.Publish(h.streamID, &hub.FrameData{
 		H264Video: &hub.H264Video{
 			VideoClockRate: 90000,
@@ -344,6 +346,7 @@ func (h *Handler) publishVideoData(timestamp uint32, compositionTime int32, vide
 			SPS:            h.sps,
 			PPS:            h.pps,
 			CodecData:      nil,
+			SliceTypes:     sliceTypes,
 		},
 	})
 }
