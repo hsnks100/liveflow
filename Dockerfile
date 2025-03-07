@@ -14,8 +14,8 @@ RUN ls .
 RUN go mod download
 RUN go build -o /app/bin/liveflow
 RUN cp config.toml /app/bin/config.toml
-RUN cp index.html /app/bin/index.html
+RUN cp -r static /app/bin/static
 
-RUN mkdir /app/bin/videos
+RUN mkdir -p /app/bin/videos
 WORKDIR /app/bin
 ENTRYPOINT ["/app/bin/liveflow"]

@@ -1,9 +1,9 @@
 [service]
 port = 8044
-[rtmp]
-port = 1930
 llhls = false
 disk_ram = true
+[rtmp]
+port = 1930
 [docker]
 mode = false
 [mp4]
