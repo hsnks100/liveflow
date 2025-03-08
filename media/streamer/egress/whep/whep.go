@@ -169,13 +169,21 @@ func (w *WHEP) syncAndSendPackets() error {
 		// Remove lagging packet from buffer
 		if videoPacket.timestamp <= audioPacket.timestamp {
 			// If audio is ahead, remove video from buffer
-			w.videoBuffer = w.videoBuffer[1:]
+			if len(w.videoBuffer) > 100 {
+				w.videoBuffer = append([]*packetWithTimestamp{}, w.videoBuffer[1:]...)
+			} else {
+				w.videoBuffer = w.videoBuffer[1:]
+			}
 			if err := w.videoTrack.WriteRTP(videoPacket.packet); err != nil {
 				return err
 			}
 		} else {
 			// If video is ahead, remove audio from buffer
-			w.audioBuffer = w.audioBuffer[1:]
+			if len(w.audioBuffer) > 100 {
+				w.audioBuffer = append([]*packetWithTimestamp{}, w.audioBuffer[1:]...)
+			} else {
+				w.audioBuffer = w.audioBuffer[1:]
+			}
 			if err := w.audioTrack.WriteRTP(audioPacket.packet); err != nil {
 				return err
 			}
