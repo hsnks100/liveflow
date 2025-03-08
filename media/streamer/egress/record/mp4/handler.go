@@ -93,7 +93,6 @@ func (m *MP4) Start(ctx context.Context, source hub.Source) error {
 				if !m.splitPending && data.H264Video.RawDTS()-m.lastSplitTime >= m.splitIntervalMS {
 					m.splitPending = true
 				}
-
 			}
 
 			if data.H264Video != nil {

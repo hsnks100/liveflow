@@ -5,8 +5,8 @@ disk_ram = true
 [rtmp]
 port = 1930
 [docker]
-mode = false
+mode = true
 [mp4]
-record=false
+record=true
 [ebml]
 record=false
