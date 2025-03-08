@@ -106,7 +106,8 @@ func (h *Hub) Publish(streamID string, data *FrameData) {
 
 	ctx, cancel := context.WithTimeout(context.Background(), 1*time.Second)
 	defer cancel()
-	for _, ch := range h.streams[streamID] {
+	channels := h.streams[streamID]
+	for _, ch := range channels {
 		select {
 		case ch <- data:
 		case <-ctx.Done():
@@ -135,7 +136,7 @@ func (h *Hub) Subscribe(streamID string) <-chan *FrameData {
 	h.mu.RLock()
 	defer h.mu.RUnlock()
 
-	ch := make(chan *FrameData)
+	ch := make(chan *FrameData, 1000)
 	h.streams[streamID] = append(h.streams[streamID], ch)
 	return ch
 }
@@ -157,11 +158,3 @@ func (h *Hub) RemoveStream(streamID string) {
 		delete(h.streams, streamID)
 	}
 }
-
-//func checkLeak() {
-//	go func() {
-//		fmt.Println("will check leak")
-//		time.Sleep(3 * time.Second)
-//		C.__lsan_do_leak_check()
-//	}()
-//}

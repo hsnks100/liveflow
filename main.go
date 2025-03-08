@@ -5,7 +5,10 @@ import (
 	"fmt"
 	"net/http"
 	_ "net/http/pprof" // pprof을 사용하기 위한 패키지
+	"os"
+	"os/signal"
 	"strconv"
+	"syscall"
 
 	"liveflow/config"
 	"liveflow/media/streamer/egress/hls"
@@ -28,9 +31,18 @@ import (
 	"liveflow/media/streamer/ingress/rtmp"
 )
 
+/*
+#include <stdio.h>
+#include <stdlib.h>
+void __lsan_do_leak_check(void);
+void leak_bit() {
+	int *p = (int *)malloc(sizeof(int));
+}
+*/
+import "C"
+
 // RTMP 받으면 자동으로 Service 서비스 동작, 녹화 서비스까지~?
 func main() {
-	ctx := context.Background()
 	viper.SetConfigName("config") // name of config file (without extension)
 	viper.SetConfigType("toml")   // REQUIRED if the config file does not have the extension in the name
 	viper.AddConfigPath(".")      // optionally look for config in the working directory
@@ -46,10 +58,16 @@ func main() {
 	}
 	fmt.Printf("Config: %+v\n", conf)
 	log.Init()
-	//log.SetCaller(ctx, true)
-	//log.SetFormatter(ctx, &logrus.JSONFormatter{
-	//	TimestampFormat: "2006-01-02 15:04:05",
-	//})
+	ctx, cancel := context.WithCancel(context.Background())
+	sigs := make(chan os.Signal, 1)
+	signal.Notify(sigs, syscall.SIGINT, syscall.SIGTERM)
+	go func() {
+		sig := <-sigs
+		log.Info(ctx, "Received signal:", sig)
+		log.Info(ctx, "Initiating shutdown...")
+		//C.__lsan_do_leak_check()
+		cancel()
+	}()
 	ctx = log.WithFields(ctx, logrus.Fields{
 		"app": "liveflow",
 	})
@@ -124,6 +142,7 @@ func main() {
 				Tracks: tracks,
 				Hub:    hub,
 			})
+			_ = whep
 			err = whep.Start(ctx, source)
 			if err != nil {
 				log.Errorf(ctx, "failed to start whep: %v", err)

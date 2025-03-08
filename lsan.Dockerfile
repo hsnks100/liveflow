@@ -1,4 +1,4 @@
-FROM golang:1.21-bullseye
+FROM golang:1.23-bullseye
 
 RUN apt-get update && \
     apt-get upgrade -y && \
@@ -10,15 +10,17 @@ RUN chmod +x /install-ffmpeg-lsan.sh && /install-ffmpeg-lsan.sh
 ENV PKG_CONFIG_PATH=/ffmpeg_build/lib/pkgconfig:${PKG_CONFIG_PATH}
 ENV PATH="/usr/local/go/bin:${PATH}"
 
-COPY ./ /app
 WORKDIR /app
-
+COPY go.mod go.sum ./
 ENV CGO_LDFLAGS='-fsanitize=address'
 ENV CGO_CFLAGS='-fsanitize=address'
-RUN go mod download
-RUN go build -o /app/bin/liveflow
-RUN cp config.toml /app/bin/config.toml
-RUN cp -r static /app/bin/static
+RUN --mount=type=cache,target=/go/pkg/mod \
+    go mod download
+COPY ./ /app
 RUN mkdir -p /app/bin/videos
-WORKDIR /app/bin
-ENTRYPOINT ["/app/bin/liveflow"]
+RUN --mount=type=cache,target=/root/.cache/go-build \
+    go build -o /app
+WORKDIR /app
+ENV GOGC 10
+ENV ASAN_OPTIONS quarantine_size_mb=32
+ENTRYPOINT ["/app/liveflow"]
