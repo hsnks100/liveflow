@@ -3,15 +3,16 @@ package main
 import (
 	"context"
 	"fmt"
+	"net/http"
+	_ "net/http/pprof" // pprof을 사용하기 위한 패키지
+	"strconv"
+
 	"liveflow/config"
 	"liveflow/media/streamer/egress/hls"
 	"liveflow/media/streamer/egress/record/mp4"
 	"liveflow/media/streamer/egress/record/webm"
 	"liveflow/media/streamer/egress/whep"
 	"liveflow/media/streamer/ingress/whip"
-	"net/http"
-	_ "net/http/pprof" // pprof을 사용하기 위한 패키지
-	"strconv"
 
 	"github.com/labstack/echo/v4"
 	"github.com/labstack/echo/v4/middleware"

@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+
 	"liveflow/log"
 	"liveflow/media/streamer/pipe"
 
@@ -68,6 +69,7 @@ func (t *AudioTranscodingProcess) Init() error {
 	if t.encCodecContext == nil {
 		return errors.New("codec context is nil")
 	}
+
 	if t.decCodecContext.MediaType() == astiav.MediaTypeAudio {
 		t.encCodecContext.SetChannelLayout(astiav.ChannelLayoutStereo)
 		t.encCodecContext.SetSampleRate(t.encSampleRate)

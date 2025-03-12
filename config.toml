@@ -5,7 +5,7 @@ port = 1930
 llhls = false
 disk_ram = true
 [docker]
-mode = false
+mode=false
 [mp4]
 record=false
 [ebml]

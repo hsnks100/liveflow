@@ -1,5 +1,10 @@
 package hub
 
+// #include <stdio.h>
+// #include <stdlib.h>
+//
+// void __lsan_do_leak_check(void);
+import "C"
 import (
 	"context"
 	"fmt"
@@ -122,6 +127,7 @@ func (h *Hub) Unpublish(streamID string) {
 		close(ch)
 	}
 	delete(h.streams, streamID)
+	//checkLeak()
 }
 
 // Subscribe : Subscribes to the given streamID.
@@ -151,3 +157,11 @@ func (h *Hub) RemoveStream(streamID string) {
 		delete(h.streams, streamID)
 	}
 }
+
+//func checkLeak() {
+//	go func() {
+//		fmt.Println("will check leak")
+//		time.Sleep(3 * time.Second)
+//		C.__lsan_do_leak_check()
+//	}()
+//}

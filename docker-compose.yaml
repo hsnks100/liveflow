@@ -10,7 +10,7 @@ services:
     ports:
       - "8044:8044"
       - "1930:1930"
-      - "30000-31000:30000-31000/udp"
+      - "40000-41000:40000-41000/udp"
     environment:
       DOCKER_MODE: "true"
     build:
