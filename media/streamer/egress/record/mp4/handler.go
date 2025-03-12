@@ -5,10 +5,11 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"liveflow/media/streamer/egress/record"
-	"liveflow/media/streamer/processes"
 	"os"
 	"time"
+
+	"liveflow/media/streamer/egress/record"
+	"liveflow/media/streamer/processes"
 
 	astiav "github.com/asticode/go-astiav"
 	"github.com/deepch/vdk/codec/aacparser"
@@ -122,6 +123,7 @@ func (m *MP4) Start(ctx context.Context, source hub.Source) error {
 		if err != nil {
 			log.Error(ctx, err, "failed to write trailer")
 		}
+		log.Info(ctx, "mp4 file closed")
 	}()
 	return nil
 }
