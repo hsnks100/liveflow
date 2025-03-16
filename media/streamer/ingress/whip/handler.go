@@ -4,10 +4,11 @@ import (
 	"context"
 	"fmt"
 	"io"
-	"liveflow/media/streamer/ingress"
 	"net/http"
 	"strings"
 	"time"
+
+	"liveflow/media/streamer/ingress"
 
 	"github.com/labstack/echo/v4"
 	"github.com/pion/rtp"
@@ -282,6 +283,7 @@ func (r *WHIP) whepHandler(c echo.Context) error {
 	}
 	streamKey, err := r.bearerToken(c)
 	if err != nil {
+		log.Error(context.Background(), err, "failed to get stream key")
 		return c.JSON(http.StatusInternalServerError, err.Error())
 	}
 
@@ -289,11 +291,12 @@ func (r *WHIP) whepHandler(c echo.Context) error {
 	m := &webrtc.MediaEngine{}
 	err = registerCodec(m)
 	if err != nil {
+		log.Error(context.Background(), err, "failed to register codec")
 		return c.JSON(http.StatusInternalServerError, err.Error())
 	}
 
 	se := webrtc.SettingEngine{}
-	se.SetEphemeralUDPPortRange(30000, 30500)
+	se.SetEphemeralUDPPortRange(40000, 40010)
 	if r.dockerMode {
 		se.SetNAT1To1IPs([]string{"127.0.0.1"}, webrtc.ICECandidateTypeHost)
 	}
@@ -301,6 +304,7 @@ func (r *WHIP) whepHandler(c echo.Context) error {
 	api := webrtc.NewAPI(webrtc.WithMediaEngine(m), webrtc.WithSettingEngine(se))
 	peerConnection, err := api.NewPeerConnection(peerConnectionConfiguration)
 	if err != nil {
+		log.Error(context.Background(), err, "failed to create peer connection")
 		return c.JSON(http.StatusInternalServerError, err.Error())
 	}
 
@@ -309,6 +313,7 @@ func (r *WHIP) whepHandler(c echo.Context) error {
 	for _, track := range r.tracks[streamKey] {
 		sender, err := peerConnection.AddTrack(track)
 		if err != nil {
+			log.Error(context.Background(), err, "failed to add track")
 			return c.JSON(http.StatusInternalServerError, err.Error())
 		}
 		rtpSenders = append(rtpSenders, sender)
