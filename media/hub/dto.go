@@ -17,7 +17,7 @@ type H264Video struct {
 	Data           []byte
 	SPS            []byte
 	PPS            []byte
-	SliceType      SliceType
+	SliceTypes     []SliceType
 	CodecData      []byte
 }
 

@@ -5,6 +5,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"liveflow/media/streamer/ingress"
 	"os"
 	"path/filepath"
 
@@ -17,11 +18,13 @@ import (
 	rtmpmsg "github.com/yutopp/go-rtmp/message"
 
 	"liveflow/log"
+	"liveflow/media/hlshub"
 	"liveflow/media/hub"
 )
 
 type Handler struct {
 	hub      *hub.Hub
+	HLSHub   *hlshub.HLSHub
 	streamID string
 	rtmp.DefaultHandler
 	flvFile *os.File
@@ -335,6 +338,7 @@ func (h *Handler) publishVideoData(timestamp uint32, compositionTime int32, vide
 	dts := int64(timestamp)
 	pts := int64(compositionTime) + dts
 
+	sliceTypes := ingress.SliceTypes(videoDataToSend)
 	h.hub.Publish(h.streamID, &hub.FrameData{
 		H264Video: &hub.H264Video{
 			VideoClockRate: 90000,
@@ -344,6 +348,7 @@ func (h *Handler) publishVideoData(timestamp uint32, compositionTime int32, vide
 			SPS:            h.sps,
 			PPS:            h.pps,
 			CodecData:      nil,
+			SliceTypes:     sliceTypes,
 		},
 	})
 }
@@ -355,6 +360,7 @@ func (h *Handler) OnClose() {
 		_ = h.flvFile.Close()
 	}
 	h.hub.Unpublish(h.streamID)
+	h.HLSHub.DeleteMuxer(h.streamID)
 }
 
 func flvSampleRate(soundRate flvtag.SoundRate) uint32 {

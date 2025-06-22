@@ -1,5 +1,10 @@
 package hub
 
+// #include <stdio.h>
+// #include <stdlib.h>
+//
+// void __lsan_do_leak_check(void);
+import "C"
 import (
 	"context"
 	"fmt"
@@ -101,7 +106,8 @@ func (h *Hub) Publish(streamID string, data *FrameData) {
 
 	ctx, cancel := context.WithTimeout(context.Background(), 1*time.Second)
 	defer cancel()
-	for _, ch := range h.streams[streamID] {
+	channels := h.streams[streamID]
+	for _, ch := range channels {
 		select {
 		case ch <- data:
 		case <-ctx.Done():
@@ -122,6 +128,7 @@ func (h *Hub) Unpublish(streamID string) {
 		close(ch)
 	}
 	delete(h.streams, streamID)
+	//checkLeak()
 }
 
 // Subscribe : Subscribes to the given streamID.
@@ -129,7 +136,7 @@ func (h *Hub) Subscribe(streamID string) <-chan *FrameData {
 	h.mu.RLock()
 	defer h.mu.RUnlock()
 
-	ch := make(chan *FrameData)
+	ch := make(chan *FrameData, 1000)
 	h.streams[streamID] = append(h.streams[streamID], ch)
 	return ch
 }

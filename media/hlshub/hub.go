@@ -63,3 +63,13 @@ func (s *HLSHub) MuxersByWorkID(workID string) (map[string]*gohlslib.Muxer, erro
 	}
 	return muxers, nil
 }
+
+func (s *HLSHub) WorkIDs() []string {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	keys := make([]string, 0, len(s.hlsMuxers))
+	for k := range s.hlsMuxers {
+		keys = append(keys, k)
+	}
+	return keys
+}

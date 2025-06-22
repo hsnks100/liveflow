@@ -1,16 +1,16 @@
-# docker-compose
-version: "3.4"
+version: "2.1"
 services:
   liveflow:
     image: liveflow_custom:latest
+    mem_limit: 350m
     stdin_open: true # docker run -i
     tty: true # docker run -t
     volumes:
-      - "~/.store:/app/bin/videos"
+      - "~/.store:/app/videos"
     ports:
       - "8044:8044"
       - "1930:1930"
-      - "30000-31000:30000-31000/udp"
+      - "40000-40010:40000-40010/udp"
     environment:
       DOCKER_MODE: "true"
     build:

@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <script src="https://cdn.jsdelivr.net/npm/@mux/mux-video@0"></script>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>M3U8 Player</title>
+</head>
+<body>
+<div id="root"></div>
+<mux-video
+        id="hls-player"
+        prefer-playback="mse"
+        controls
+        autoplay
+        muted
+>
+</mux-video>
+
+<script>
+    // Function to get the query parameters from the URL
+    function getQueryParam(param) {
+        const urlParams = new URLSearchParams(window.location.search);
+        return urlParams.get(param);
+    }
+
+    // Get streamid from the URL query parameters
+    const streamId = getQueryParam('streamid');
+
+    if (streamId) {
+        // Update the src dynamically
+        const host = window.location.protocol + '//' + window.location.host;
+        const player = document.getElementById('hls-player');
+        player.src = `${host}/hls/${streamId}/master.m3u8`;
+    } else {
+        console.error('Stream ID not provided in the URL');
+    }
+</script>
+
+</body>
+</html>

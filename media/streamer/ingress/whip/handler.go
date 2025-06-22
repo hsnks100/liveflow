@@ -8,7 +8,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/deepch/vdk/codec/h264parser"
+	"liveflow/media/streamer/ingress"
+
 	"github.com/labstack/echo/v4"
 	"github.com/pion/rtp"
 	"github.com/pion/rtp/codecs"
@@ -227,30 +228,7 @@ func (w *WebRTCHandler) onVideo(ctx context.Context, packets []*rtp.Packet) erro
 		return nil
 	}
 	pts := w.videoTimestampGen.Generate(int64(packets[0].Timestamp))
-	nalus, _ := h264parser.SplitNALUs(payload)
-	var slice hub.SliceType
-	for _, nalu := range nalus {
-		if len(nalu) < 1 {
-			continue
-		}
-		nalUnitType := nalu[0] & 0x1f
-		switch nalUnitType {
-		case h264parser.NALU_SPS:
-			slice = hub.SliceSPS
-		case h264parser.NALU_PPS:
-			slice = hub.SlicePPS
-		default:
-			sliceType, _ := h264parser.ParseSliceHeaderFromNALU(nalu)
-			switch sliceType {
-			case h264parser.SLICE_I:
-				slice = hub.SliceI
-			case h264parser.SLICE_P:
-				slice = hub.SliceP
-			case h264parser.SLICE_B:
-				slice = hub.SliceB
-			}
-		}
-	}
+	sliceTypes := ingress.SliceTypes(payload)
 	w.hub.Publish(w.streamID, &hub.FrameData{
 		H264Video: &hub.H264Video{
 			PTS:            pts,
@@ -259,7 +237,7 @@ func (w *WebRTCHandler) onVideo(ctx context.Context, packets []*rtp.Packet) erro
 			Data:           payload,
 			SPS:            nil,
 			PPS:            nil,
-			SliceType:      slice,
+			SliceTypes:     sliceTypes,
 			CodecData:      nil,
 		},
 		AACAudio: nil,
@@ -305,6 +283,7 @@ func (r *WHIP) whepHandler(c echo.Context) error {
 	}
 	streamKey, err := r.bearerToken(c)
 	if err != nil {
+		log.Error(context.Background(), err, "failed to get stream key")
 		return c.JSON(http.StatusInternalServerError, err.Error())
 	}
 
@@ -312,11 +291,12 @@ func (r *WHIP) whepHandler(c echo.Context) error {
 	m := &webrtc.MediaEngine{}
 	err = registerCodec(m)
 	if err != nil {
+		log.Error(context.Background(), err, "failed to register codec")
 		return c.JSON(http.StatusInternalServerError, err.Error())
 	}
 
 	se := webrtc.SettingEngine{}
-	se.SetEphemeralUDPPortRange(30000, 30500)
+	se.SetEphemeralUDPPortRange(40000, 40010)
 	if r.dockerMode {
 		se.SetNAT1To1IPs([]string{"127.0.0.1"}, webrtc.ICECandidateTypeHost)
 	}
@@ -324,6 +304,7 @@ func (r *WHIP) whepHandler(c echo.Context) error {
 	api := webrtc.NewAPI(webrtc.WithMediaEngine(m), webrtc.WithSettingEngine(se))
 	peerConnection, err := api.NewPeerConnection(peerConnectionConfiguration)
 	if err != nil {
+		log.Error(context.Background(), err, "failed to create peer connection")
 		return c.JSON(http.StatusInternalServerError, err.Error())
 	}
 
@@ -332,6 +313,7 @@ func (r *WHIP) whepHandler(c echo.Context) error {
 	for _, track := range r.tracks[streamKey] {
 		sender, err := peerConnection.AddTrack(track)
 		if err != nil {
+			log.Error(context.Background(), err, "failed to add track")
 			return c.JSON(http.StatusInternalServerError, err.Error())
 		}
 		rtpSenders = append(rtpSenders, sender)
@@ -353,6 +335,7 @@ func (r *WHIP) whepHandler(c echo.Context) error {
 		fmt.Printf("ICE Connection State has changed: %s\n", connectionState.String())
 
 		if connectionState == webrtc.ICEConnectionStateFailed {
+			delete(r.tracks, streamKey)
 			_ = peerConnection.Close()
 		}
 	})

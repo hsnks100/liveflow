@@ -1,11 +1,17 @@
 package whep
 
+// #include <stdio.h>
+// #include <stdlib.h>
+//
+// void __lsan_do_leak_check(void);
+import "C"
 import (
 	"context"
 	"errors"
-	"liveflow/media/streamer/processes"
 
-	astiav "github.com/asticode/go-astiav"
+	"github.com/asticode/go-astiav"
+
+	"liveflow/media/streamer/processes"
 
 	"github.com/deepch/vdk/codec/aacparser"
 	"github.com/pion/rtp"
@@ -83,40 +89,85 @@ func (w *WHEP) Start(ctx context.Context, source hub.Source) error {
 				if audioTranscodingProcess == nil {
 					audioTranscodingProcess = processes.NewTranscodingProcess(astiav.CodecIDAac, astiav.CodecIDOpus, audioSampleRate)
 					audioTranscodingProcess.Init()
-					defer audioTranscodingProcess.Close()
 				}
+				w.addAudioTrack(ctx, source.StreamID())
 				err := w.onAACAudio(ctx, source, data.AACAudio, audioTranscodingProcess)
 				if err != nil {
 					log.Error(ctx, err, "failed to process AAC audio")
 				}
-			} else {
-				if data.OPUSAudio != nil {
-					err := w.onAudio(source, data.OPUSAudio)
-					if err != nil {
-						log.Error(ctx, err, "failed to process OPUS audio")
-					}
+			} else if data.OPUSAudio != nil {
+				w.addAudioTrack(ctx, source.StreamID())
+				err := w.onAudio(source, data.OPUSAudio)
+				if err != nil {
+					log.Error(ctx, err, "failed to process OPUS audio")
 				}
 			}
 		}
+
+		if audioTranscodingProcess != nil {
+			log.Info(ctx, "draining audio transcoding process for WHEP")
+			packets, err := audioTranscodingProcess.Drain()
+			if err != nil {
+				log.Error(ctx, err, "failed to drain audio transcoder for WHEP")
+			}
+			for _, packet := range packets {
+				err := w.onAudio(source, &hub.OPUSAudio{
+					Data:           packet.Data,
+					PTS:            packet.PTS,
+					DTS:            packet.DTS,
+					AudioClockRate: uint32(packet.SampleRate),
+				})
+				if err != nil {
+					log.Error(ctx, err, "failed to process drained OPUS audio for WHEP")
+				}
+			}
+			audioTranscodingProcess.Close()
+			log.Info(ctx, "audio transcoding process for WHEP drained and closed")
+		}
+		log.Info(ctx, "end whep")
+		//C.__lsan_do_leak_check()
 	}()
+
 	return nil
 }
 
-func (w *WHEP) onVideo(source hub.Source, h264Video *hub.H264Video) error {
+func (w *WHEP) addVideoTrack(streamID string, videoClockRate uint32) error {
 	if w.videoTrack == nil {
 		var err error
 		w.videoTrack, err = webrtc.NewTrackLocalStaticRTP(webrtc.RTPCodecCapability{MimeType: webrtc.MimeTypeH264}, "video", "pion")
 		if err != nil {
 			return err
 		}
-		w.tracks[source.StreamID()] = append(w.tracks[source.StreamID()], w.videoTrack)
+		w.tracks[streamID] = append(w.tracks[streamID], w.videoTrack)
 		ssrc := uint32(110)
 		const (
 			h264PayloadType = 96
 			mtu             = 1400
 		)
-		w.videoPacketizer = rtp.NewPacketizer(mtu, h264PayloadType, ssrc, &codecs.H264Payloader{}, rtp.NewRandomSequencer(), h264Video.VideoClockRate)
+		w.videoPacketizer = rtp.NewPacketizer(mtu, h264PayloadType, ssrc, &codecs.H264Payloader{}, rtp.NewRandomSequencer(), videoClockRate)
 	}
+	return nil
+}
+
+func (w *WHEP) addAudioTrack(ctx context.Context, streamID string) error {
+	if w.audioTrack == nil {
+		var err error
+		w.audioTrack, err = webrtc.NewTrackLocalStaticRTP(webrtc.RTPCodecCapability{MimeType: webrtc.MimeTypeOpus}, "audio", "pion")
+		if err != nil {
+			log.Error(ctx, err, "failed to create audio track")
+		}
+		w.tracks[streamID] = append(w.tracks[streamID], w.audioTrack)
+		ssrc := uint32(111)
+		const (
+			opusPayloadType = 111
+			mtu             = 1400
+		)
+		w.audioPacketizer = rtp.NewPacketizer(mtu, opusPayloadType, ssrc, &codecs.OpusPayloader{}, rtp.NewRandomSequencer(), 48000)
+	}
+	return nil
+}
+func (w *WHEP) onVideo(source hub.Source, h264Video *hub.H264Video) error {
+	w.addVideoTrack(source.StreamID(), h264Video.VideoClockRate)
 
 	videoDuration := h264Video.DTS - w.lastVideoTimestamp
 	videoPackets := w.videoPacketizer.Packetize(h264Video.Data, uint32(videoDuration))
@@ -131,21 +182,6 @@ func (w *WHEP) onVideo(source hub.Source, h264Video *hub.H264Video) error {
 }
 
 func (w *WHEP) onAudio(source hub.Source, opusAudio *hub.OPUSAudio) error {
-	if w.audioTrack == nil {
-		var err error
-		w.audioTrack, err = webrtc.NewTrackLocalStaticRTP(webrtc.RTPCodecCapability{MimeType: webrtc.MimeTypeOpus}, "audio", "pion")
-		if err != nil {
-			return err
-		}
-		w.tracks[source.StreamID()] = append(w.tracks[source.StreamID()], w.audioTrack)
-		ssrc := uint32(111)
-		const (
-			opusPayloadType = 111
-			mtu             = 1400
-		)
-		w.audioPacketizer = rtp.NewPacketizer(mtu, opusPayloadType, ssrc, &codecs.OpusPayloader{}, rtp.NewRandomSequencer(), opusAudio.AudioClockRate)
-	}
-
 	audioDuration := opusAudio.DTS - w.lastAudioTimestamp
 	audioPackets := w.audioPacketizer.Packetize(opusAudio.Data, uint32(audioDuration))
 
@@ -161,34 +197,6 @@ func (w *WHEP) onAudio(source hub.Source, opusAudio *hub.OPUSAudio) error {
 	return nil
 }
 
-func (w *WHEP) syncAndSendPackets() error {
-	for len(w.videoBuffer) > 0 && len(w.audioBuffer) > 0 {
-		videoPacket := w.videoBuffer[0]
-		audioPacket := w.audioBuffer[0]
-		// Remove lagging packet from buffer
-		if videoPacket.timestamp <= audioPacket.timestamp {
-			// If audio is ahead, remove video from buffer
-			w.videoBuffer = w.videoBuffer[1:]
-			if err := w.videoTrack.WriteRTP(videoPacket.packet); err != nil {
-				return err
-			}
-		} else {
-			// If video is ahead, remove audio from buffer
-			w.audioBuffer = w.audioBuffer[1:]
-			if err := w.audioTrack.WriteRTP(audioPacket.packet); err != nil {
-				return err
-			}
-		}
-	}
-	return nil
-}
-
-func abs(x int64) int64 {
-	if x < 0 {
-		return -x
-	}
-	return x
-}
 func (w *WHEP) onAACAudio(ctx context.Context, source hub.Source, aac *hub.AACAudio, transcodingProcess *processes.AudioTranscodingProcess) error {
 	if len(aac.Data) == 0 {
 		log.Warn(ctx, "no data")
@@ -223,4 +231,32 @@ func (w *WHEP) onAACAudio(ctx context.Context, source hub.Source, aac *hub.AACAu
 		})
 	}
 	return nil
+}
+
+func (w *WHEP) syncAndSendPackets() error {
+	for len(w.videoBuffer) > 0 && len(w.audioBuffer) > 0 {
+		videoPacket := w.videoBuffer[0]
+		audioPacket := w.audioBuffer[0]
+		// Remove lagging packet from buffer
+		if videoPacket.timestamp <= audioPacket.timestamp {
+			// If audio is ahead, remove video from buffer
+			w.videoBuffer[0] = nil
+			w.videoBuffer = w.videoBuffer[1:]
+			if err := w.videoTrack.WriteRTP(videoPacket.packet); err != nil {
+				return err
+			}
+		} else {
+			// If video is ahead, remove audio from buffer
+			w.audioBuffer[0] = nil
+			w.audioBuffer = w.audioBuffer[1:]
+			if err := w.audioTrack.WriteRTP(audioPacket.packet); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
+func (w *WHEP) Name() string {
+	return "whep-server"
 }

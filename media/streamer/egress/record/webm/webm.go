@@ -5,10 +5,9 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
-	"liveflow/log"
-	"liveflow/media/streamer/egress/record"
+	"io"
+	"io/ioutil"
 	"math"
-	"math/rand"
 	"os"
 
 	"github.com/at-wat/ebml-go"
@@ -44,11 +43,11 @@ const (
 
 type EBMLMuxer struct {
 	writers          []mkvcore.BlockWriteCloser
+	tempFile         *os.File
 	container        Name
-	tempFileName     string
 	audioSampleRate  float64
 	audioChannels    uint64
-	durationPos      uint64
+	durationPos      int64
 	duration         int64
 	audioStreamIndex int
 	videoStreamIndex int
@@ -57,7 +56,6 @@ type EBMLMuxer struct {
 func NewEBMLMuxer(sampleRate int, channels int, container Name) *EBMLMuxer {
 	return &EBMLMuxer{
 		writers:         nil,
-		tempFileName:    "",
 		audioSampleRate: float64(sampleRate),
 		audioChannels:   uint64(channels),
 		durationPos:     0,
@@ -71,12 +69,9 @@ func (w *EBMLMuxer) makeWebmWriters() ([]mkvcore.BlockWriteCloser, error) {
 		trackTypeVideo = 1
 		trackTypeAudio = 2
 	)
-	tempFile, err := record.CreateFileInDir(fmt.Sprintf("videos/%d.webm", rand.Int()))
-	if err != nil {
-		return nil, err
-	}
 	w.audioStreamIndex = 0
 	w.videoStreamIndex = 1
+
 	trackEntries := []webm.TrackEntry{
 		{
 			Name:        trackNameAudio,
@@ -101,31 +96,30 @@ func (w *EBMLMuxer) makeWebmWriters() ([]mkvcore.BlockWriteCloser, error) {
 			},
 		},
 	}
-	writers, err := webm.NewSimpleBlockWriter(tempFile, trackEntries,
+
+	var err error
+	w.tempFile, err = ioutil.TempFile("", "ebmlmuxer-*.webm")
+	if err != nil {
+		return nil, err
+	}
+
+	writers, err := webm.NewSimpleBlockWriter(w.tempFile, trackEntries,
 		mkvcore.WithSeekHead(true),
-		mkvcore.WithOnErrorHandler(func(err error) {
-			log.Error(context.Background(), err, "failed to construct webm writer (error)")
-		}),
-		mkvcore.WithOnFatalHandler(func(err error) {
-			log.Error(context.Background(), err, "failed to construct webm writer (fatal)")
-		}),
 		mkvcore.WithSegmentInfo(&webm.Info{
 			TimecodeScale: defaultTimecode, // 1ms
-			MuxingApp:     "mrw-v4.ebml-go.webm",
-			WritingApp:    "mrw-v4.ebml-go.webm",
-			Duration:      defaultDuration, // Arbitrarily set to default videoSplitIntervalMs, final value is adjusted in writeTrailer.
+			MuxingApp:     "your_app_name",
+			WritingApp:    "your_app_name",
+			Duration:      defaultDuration, // Placeholder duration; final value is adjusted in overwritePTS.
 		}),
 		mkvcore.WithMarshalOptions(ebml.WithElementWriteHooks(func(e *ebml.Element) {
-			switch e.Name {
-			case "Duration":
-				w.durationPos = e.Position + 4 // Duration header size = 3, SegmentInfo header size delta = 1
+			if e.Name == "Duration" {
+				w.durationPos = int64(e.Position + 4) // Adjust position to overwrite duration later.
 			}
 		})),
 	)
 	if err != nil {
 		return nil, err
 	}
-	w.tempFileName = tempFile.Name()
 	var mkvWriters []mkvcore.BlockWriteCloser
 	for _, writer := range writers {
 		mkvWriters = append(mkvWriters, writer)
@@ -138,67 +132,62 @@ func (w *EBMLMuxer) makeMKVWriters() ([]mkvcore.BlockWriteCloser, error) {
 		trackTypeVideo = 1
 		trackTypeAudio = 2
 	)
-	tempFile, err := record.CreateFileInDir(fmt.Sprintf("videos/%d.mkv", rand.Int()))
+	w.audioStreamIndex = 0
+	w.videoStreamIndex = 1
+
+	mkvTrackDesc := []mkvcore.TrackDescription{
+		{
+			TrackNumber: 1,
+			TrackEntry: webm.TrackEntry{
+				Name:        trackNameAudio,
+				TrackNumber: 1,
+				TrackUID:    1,
+				CodecID:     codecIDOPUS,
+				TrackType:   trackTypeAudio,
+				Audio: &webm.Audio{
+					SamplingFrequency: w.audioSampleRate,
+					Channels:          w.audioChannels,
+				},
+			},
+		},
+		{
+			TrackNumber: webmVideoTrackNumber,
+			TrackEntry: webm.TrackEntry{
+				TrackNumber:     webmVideoTrackNumber,
+				TrackUID:        webmVideoTrackNumber,
+				TrackType:       trackTypeVideo,
+				Name:            trackNameVideo,
+				CodecID:         codecIDH264,
+				DefaultDuration: 0,
+			},
+		},
+	}
+
+	var err error
+	w.tempFile, err = ioutil.TempFile("/tmp", "ebmlmuxer-*.mkv")
 	if err != nil {
 		return nil, err
 	}
-	var mkvTrackDesc []mkvcore.TrackDescription
-	w.audioStreamIndex = 0
-	w.videoStreamIndex = 1
-	mkvTrackDesc = append(mkvTrackDesc, mkvcore.TrackDescription{
-		TrackNumber: 1,
-		TrackEntry: webm.TrackEntry{
-			Name:        trackNameAudio,
-			TrackNumber: 1,
-			TrackUID:    1,
-			CodecID:     codecIDOPUS,
-			TrackType:   trackTypeAudio,
-			Audio: &webm.Audio{
-				SamplingFrequency: w.audioSampleRate,
-				Channels:          2,
-			},
-		},
-	})
-	mkvTrackDesc = append(mkvTrackDesc, mkvcore.TrackDescription{
-		TrackNumber: webmVideoTrackNumber,
-		TrackEntry: webm.TrackEntry{
-			TrackNumber:     webmVideoTrackNumber,
-			TrackUID:        webmVideoTrackNumber,
-			TrackType:       trackTypeVideo,
-			DefaultDuration: 0,
-			Name:            trackNameVideo,
-			CodecID:         codecIDH264,
-			SeekPreRoll:     0,
-			// TODO: The resolution may need to be written later, but it works fine without it for now.
-			//Video: &webm.Video{
-			//	PixelWidth:  1280,
-			//	PixelHeight: 720,
-			//},
-		},
-	})
-	var mkvWriters []mkvcore.BlockWriteCloser
-	mkvWriters, err = mkvcore.NewSimpleBlockWriter(tempFile, mkvTrackDesc,
+
+	writers, err := mkvcore.NewSimpleBlockWriter(w.tempFile, mkvTrackDesc,
 		mkvcore.WithSeekHead(true),
 		mkvcore.WithEBMLHeader(mkv.DefaultEBMLHeader),
 		mkvcore.WithSegmentInfo(&webm.Info{
-			TimecodeScale: defaultTimecode, // 1ms
-			MuxingApp:     "mrw-v4.ebml-go.mkv",
-			WritingApp:    "mrw-v4.ebml-go.mkv",
-			Duration:      defaultDuration, // Arbitrarily set to default videoSplitIntervalMs, final value is adjusted in writeTrailer.
+			TimecodeScale: defaultTimecode,
+			MuxingApp:     "your_app_name",
+			WritingApp:    "your_app_name",
+			Duration:      defaultDuration,
 		}),
-		mkvcore.WithBlockInterceptor(webm.DefaultBlockInterceptor),
 		mkvcore.WithMarshalOptions(ebml.WithElementWriteHooks(func(e *ebml.Element) {
-			switch e.Name {
-			case "Duration":
-				w.durationPos = e.Position + 4 // Duration header size = 3, SegmentInfo header size delta = 1
+			if e.Name == "Duration" {
+				w.durationPos = int64(e.Position + 4)
 			}
 		})),
 	)
 	if err != nil {
 		return nil, err
 	}
-	w.tempFileName = tempFile.Name()
-	return mkvWriters, nil
+	return writers, nil
 }
 
 func (w *EBMLMuxer) Init(_ context.Context) error {
@@ -238,53 +227,52 @@ func (w *EBMLMuxer) WriteAudio(data []byte, keyframe bool, pts uint64, _ uint64)
 	return nil
 }
 
-func (w *EBMLMuxer) Finalize(ctx context.Context) error {
-	defer func() {
-		w.cleanup()
-	}()
-	log.Info(ctx, "finalize webm muxer")
-	fileName := w.tempFileName
+func (w *EBMLMuxer) Finalize(ctx context.Context, output io.Writer) error {
+	defer w.cleanup()
+
+	if err := w.overwritePTS(); err != nil {
+		return fmt.Errorf("overwrite PTS error: %w", err)
+	}
+
+	// Copy the data from the temporary file to the output writer
+	if _, err := w.tempFile.Seek(0, io.SeekStart); err != nil {
+		return fmt.Errorf("seek error: %w", err)
+	}
+	if _, err := io.Copy(output, w.tempFile); err != nil {
+		return fmt.Errorf("copy error: %w", err)
+	}
+
 	for _, writer := range w.writers {
 		if err := writer.Close(); err != nil {
-			log.Error(ctx, err, "failed to close writer")
+			return fmt.Errorf("writer close error: %w", err)
 		}
-	}
-	if err := w.overwritePTS(ctx, fileName); err != nil {
-		return err
 	}
 	return nil
 }
 
-func (w *EBMLMuxer) ContainerName() string {
-	return string(w.container)
-}
-
-func (w *EBMLMuxer) overwritePTS(ctx context.Context, fileName string) error {
-	tempFile, err := os.OpenFile(fileName, os.O_RDWR, 0o600)
-	if err != nil {
+func (w *EBMLMuxer) overwritePTS() error {
+	ptsBytes := make([]byte, 8)
+	binary.BigEndian.PutUint64(ptsBytes, math.Float64bits(float64(w.duration)))
+	if _, err := w.tempFile.Seek(w.durationPos, io.SeekStart); err != nil {
 		return err
 	}
-	defer func() {
-		if err := tempFile.Close(); err != nil {
-			log.Error(ctx, err, "failed to close temp file")
-		}
-	}()
-	ptsBytes, _ := EncodeFloat64(float64(w.duration))
-	if _, err := tempFile.WriteAt(ptsBytes, int64(w.durationPos)); err != nil {
+	if _, err := w.tempFile.Write(ptsBytes); err != nil {
 		return err
 	}
 	return nil
 }
 
 func (w *EBMLMuxer) cleanup() {
+	if w.tempFile != nil {
+		w.tempFile.Close()
+		//os.Remove(w.tempFile.Name())
+		w.tempFile = nil
+	}
 	w.writers = nil
-	w.tempFileName = ""
 	w.duration = 0
 	w.durationPos = 0
 }
 
-func EncodeFloat64(i float64) ([]byte, error) {
-	b := make([]byte, 8)
-	binary.BigEndian.PutUint64(b, math.Float64bits(i))
-	return b, nil
+func (w *EBMLMuxer) ContainerName() string {
+	return string(w.container)
 }

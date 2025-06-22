@@ -4,10 +4,10 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"liveflow/log"
-	"liveflow/media/streamer/pipe"
 
 	astiav "github.com/asticode/go-astiav"
+
+	"liveflow/log"
 )
 
 type MediaPacket struct {
@@ -17,7 +17,7 @@ type MediaPacket struct {
 	SampleRate int
 }
 type AudioTranscodingProcess struct {
-	pipe.BaseProcess[*MediaPacket, []*MediaPacket]
+	//pipe.BaseProcess[*MediaPacket, []*MediaPacket]
 	decCodecID      astiav.CodecID
 	encCodecID      astiav.CodecID
 	decCodec        *astiav.Codec
@@ -68,6 +68,7 @@ func (t *AudioTranscodingProcess) Init() error {
 	if t.encCodecContext == nil {
 		return errors.New("codec context is nil")
 	}
+
 	if t.decCodecContext.MediaType() == astiav.MediaTypeAudio {
 		t.encCodecContext.SetChannelLayout(astiav.ChannelLayoutStereo)
 		t.encCodecContext.SetSampleRate(t.encSampleRate)
@@ -108,28 +109,32 @@ func (t *AudioTranscodingProcess) Close() {
 
 func (t *AudioTranscodingProcess) Process(data *MediaPacket) ([]*MediaPacket, error) {
 	ctx := context.Background()
+	frame := astiav.AllocFrame()
+	defer frame.Free()
 	packet := astiav.AllocPacket()
 	defer packet.Free()
-	err := packet.FromData(data.Data)
-	if err != nil {
+	if err := packet.FromData(data.Data); err != nil {
 		log.Error(ctx, err, "failed to create packet")
 	}
 	packet.SetPts(data.PTS)
 	packet.SetDts(data.DTS)
-	err = t.decCodecContext.SendPacket(packet)
-	if err != nil {
+	if err := t.decCodecContext.SendPacket(packet); err != nil {
 		log.Error(ctx, err, "failed to send packet")
 	}
+
+	frameToSend := astiav.AllocFrame()
+	defer frameToSend.Free()
 	if t.audioFifo == nil {
 		t.audioFifo = astiav.AllocAudioFifo(
 			t.encCodecContext.SampleFormat(),
 			t.encCodecContext.ChannelLayout().Channels(),
-			t.encCodecContext.SampleRate())
+			t.encCodecContext.SampleRate(),
+		)
 	}
+
 	var opusAudio []*MediaPacket
+
 	for {
-		frame := astiav.AllocFrame()
-		defer frame.Free()
 		err := t.decCodecContext.ReceiveFrame(frame)
 		if errors.Is(err, astiav.ErrEof) {
 			fmt.Println("EOF: ", err.Error())
@@ -138,21 +143,21 @@ func (t *AudioTranscodingProcess) Process(data *MediaPacket) ([]*MediaPacket, er
 			break
 		}
 		t.audioFifo.Write(frame)
-		nbSamples := 0
+
+		// check whether we have enough samples to encode
 		for t.audioFifo.Size() >= t.encCodecContext.FrameSize() {
-			frameToSend := astiav.AllocFrame()
-			defer frameToSend.Free()
+			// initialize frameToSend before reusing it
+			frameToSend.Unref()
 			frameToSend.SetNbSamples(t.encCodecContext.FrameSize())
-			frameToSend.SetChannelLayout(t.encCodecContext.ChannelLayout()) // t.encCodecContext.ChannelLayout())
+			frameToSend.SetChannelLayout(t.encCodecContext.ChannelLayout())
 			frameToSend.SetSampleFormat(t.encCodecContext.SampleFormat())
 			frameToSend.SetSampleRate(t.encCodecContext.SampleRate())
 			frameToSend.SetPts(t.lastPts + int64(t.encCodecContext.FrameSize()))
-			t.lastPts = frameToSend.Pts()
-			nbSamples += frame.NbSamples()
-			err := frameToSend.AllocBuffer(0)
-			if err != nil {
+			if err := frameToSend.AllocBuffer(0); err != nil {
 				log.Error(ctx, err, "failed to alloc buffer")
 			}
+			t.lastPts = frameToSend.Pts()
+
 			read, err := t.audioFifo.Read(frameToSend)
 			if err != nil {
 				log.Error(ctx, err, "failed to read fifo")
@@ -160,14 +165,13 @@ func (t *AudioTranscodingProcess) Process(data *MediaPacket) ([]*MediaPacket, er
 			if read < frameToSend.NbSamples() {
 				log.Error(ctx, err, "failed to read fifo")
 			}
-			// Encode the frame
-			err = t.encCodecContext.SendFrame(frameToSend)
-			if err != nil {
+
+			if err := t.encCodecContext.SendFrame(frameToSend); err != nil {
 				log.Error(ctx, err, "failed to send frame")
 			}
+
+			pkt := astiav.AllocPacket()
 			for {
-				pkt := astiav.AllocPacket()
-				defer pkt.Free()
 				err := t.encCodecContext.ReceivePacket(pkt)
 				if errors.Is(err, astiav.ErrEof) {
 					fmt.Println("EOF: ", err.Error())
@@ -181,12 +185,72 @@ func (t *AudioTranscodingProcess) Process(data *MediaPacket) ([]*MediaPacket, er
 					DTS:        pkt.Dts(),
 					SampleRate: t.encCodecContext.SampleRate(),
 				})
+				pkt.Unref()
 			}
+			pkt.Free()
 		}
+		frame.Unref()
 	}
-	select {
-	case t.ResultChan() <- opusAudio:
-	default:
-	}
+
 	return opusAudio, nil
+}
+
+func (t *AudioTranscodingProcess) Drain() ([]*MediaPacket, error) {
+	var packets []*MediaPacket
+	ctx := context.Background()
+
+	// 1. Flush Decoder
+	if err := t.decCodecContext.SendPacket(nil); err != nil {
+		log.Error(ctx, err, "failed to send nil packet to decoder for draining")
+		// Continue to encoder flushing
+	}
+
+	frame := astiav.AllocFrame()
+	defer frame.Free()
+
+	for {
+		err := t.decCodecContext.ReceiveFrame(frame)
+		if errors.Is(err, astiav.ErrEof) || errors.Is(err, astiav.ErrEagain) {
+			break
+		}
+		if err != nil {
+			log.Error(ctx, err, "failed to receive frame from decoder during draining")
+			continue
+		}
+
+		if err := t.encCodecContext.SendFrame(frame); err != nil {
+			log.Error(ctx, err, "failed to send flushed frame to encoder")
+		}
+		frame.Unref()
+	}
+
+	// 2. Flush Encoder
+	if err := t.encCodecContext.SendFrame(nil); err != nil {
+		log.Error(ctx, err, "failed to send nil frame to encoder for draining")
+		return packets, err
+	}
+
+	pkt := astiav.AllocPacket()
+	defer pkt.Free()
+
+	for {
+		err := t.encCodecContext.ReceivePacket(pkt)
+		if errors.Is(err, astiav.ErrEof) || errors.Is(err, astiav.ErrEagain) {
+			break
+		}
+		if err != nil {
+			log.Error(ctx, err, "failed to receive packet from encoder during draining")
+			continue
+		}
+
+		packets = append(packets, &MediaPacket{
+			Data:       append([]byte{}, pkt.Data()...),
+			PTS:        pkt.Pts(),
+			DTS:        pkt.Dts(),
+			SampleRate: t.encCodecContext.SampleRate(),
+		})
+		pkt.Unref()
+	}
+
+	return packets, nil
 }

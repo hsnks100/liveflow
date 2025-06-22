@@ -19,6 +19,12 @@ const (
 	cacheControl = "CDN-Cache-Control"
 )
 
+type APIResponse struct {
+	ErrorCode int         `json:"error_code"`
+	Message   string      `json:"message"`
+	Data      interface{} `json:"data,omitempty"`
+}
+
 type Handler struct {
 	endpoint *hlshub.HLSHub
 }
@@ -27,6 +33,19 @@ func NewHandler(hlsEndpoint *hlshub.HLSHub) *Handler {
 	return &Handler{
 		endpoint: hlsEndpoint,
 	}
+}
+
+type StreamsResponse struct {
+	Streams []string `json:"streams"`
+}
+
+func (h *Handler) HandleListStreams(c echo.Context) error {
+	streams := h.endpoint.WorkIDs()
+	return c.JSON(http.StatusOK, APIResponse{
+		ErrorCode: 0,
+		Message:   "success",
+		Data:      StreamsResponse{Streams: streams},
+	})
 }
 
 func (h *Handler) HandleMasterM3U8(c echo.Context) error {
@@ -94,6 +113,7 @@ func (h *Handler) HandleM3U8(c echo.Context) error {
 	extension := filepath.Ext(c.Request().URL.String())
 	switch extension {
 	case ".m3u8":
+		c.Response().Header().Set(echo.HeaderContentType, "application/vnd.apple.mpegurl")
 		c.Response().Header().Set(cacheControl, "max-age=1")
 	case ".ts", ".mp4":
 		c.Response().Header().Set(cacheControl, "max-age=3600")

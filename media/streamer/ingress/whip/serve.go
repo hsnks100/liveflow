@@ -4,9 +4,10 @@ import (
 	"context"
 	"fmt"
 	"io"
-	"liveflow/log"
 	"net/http"
 	"strings"
+
+	"liveflow/log"
 
 	"github.com/labstack/echo/v4"
 	"github.com/pion/interceptor"
@@ -56,7 +57,9 @@ func NewWHIP(args WHIPArgs) *WHIP {
 
 func (r *WHIP) RegisterRoute() {
 	whipServer := r.echo
-	whipServer.Static("/", ".")
+	whipServer.GET("/wv", func(c echo.Context) error {
+		return c.File("static/index.html")
+	})
 	whipServer.POST("/whip", r.whipHandler)
 	whipServer.POST("/whep", r.whepHandler)
 }
@@ -125,7 +128,7 @@ func (r *WHIP) whipHandler(c echo.Context) error {
 
 	// Create the API object with the MediaEngine
 	se := webrtc.SettingEngine{}
-	se.SetEphemeralUDPPortRange(30000, 30500)
+	se.SetEphemeralUDPPortRange(40000, 40010)
 	if r.dockerMode {
 		se.SetNAT1To1IPs([]string{"127.0.0.1"}, webrtc.ICECandidateTypeHost)
 		se.SetNetworkTypes([]webrtc.NetworkType{webrtc.NetworkTypeUDP4})
