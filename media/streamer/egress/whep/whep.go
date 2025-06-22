@@ -256,3 +256,7 @@ func (w *WHEP) syncAndSendPackets() error {
 	}
 	return nil
 }
+
+func (w *WHEP) Name() string {
+	return "whep-server"
+}
