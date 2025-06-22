@@ -27,6 +27,7 @@ import (
 	"liveflow/log"
 	"liveflow/media/hlshub"
 	"liveflow/media/hub"
+	"liveflow/media/streamer/egress/thumbnail"
 	"liveflow/media/streamer/ingress/rtmp"
 )
 
@@ -136,6 +137,16 @@ func main() {
 					Hub:             sourceHub,
 					SplitIntervalMS: 6000,
 					StreamID:        source.StreamID(),
+				}))
+			}
+
+			if conf.Thumbnail.Enable {
+				starters = append(starters, thumbnail.NewThumbnail(thumbnail.ThumbnailArgs{
+					Hub:             sourceHub,
+					OutputPath:      conf.Thumbnail.OutputPath,
+					IntervalSeconds: conf.Thumbnail.IntervalSeconds,
+					Width:           conf.Thumbnail.Width,
+					Height:          conf.Thumbnail.Height,
 				}))
 			}
 
