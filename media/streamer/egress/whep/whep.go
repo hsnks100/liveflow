@@ -105,7 +105,24 @@ func (w *WHEP) Start(ctx context.Context, source hub.Source) error {
 		}
 
 		if audioTranscodingProcess != nil {
+			log.Info(ctx, "draining audio transcoding process for WHEP")
+			packets, err := audioTranscodingProcess.Drain()
+			if err != nil {
+				log.Error(ctx, err, "failed to drain audio transcoder for WHEP")
+			}
+			for _, packet := range packets {
+				err := w.onAudio(source, &hub.OPUSAudio{
+					Data:           packet.Data,
+					PTS:            packet.PTS,
+					DTS:            packet.DTS,
+					AudioClockRate: uint32(packet.SampleRate),
+				})
+				if err != nil {
+					log.Error(ctx, err, "failed to process drained OPUS audio for WHEP")
+				}
+			}
 			audioTranscodingProcess.Close()
+			log.Info(ctx, "audio transcoding process for WHEP drained and closed")
 		}
 		log.Info(ctx, "end whep")
 		//C.__lsan_do_leak_check()

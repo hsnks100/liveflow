@@ -118,11 +118,29 @@ func (m *MP4) Start(ctx context.Context, source hub.Source) error {
 				}
 			}
 		}
-		err = m.muxer.WriteTrailer()
-		if err != nil {
-			log.Error(ctx, err, "failed to write trailer")
+
+		if audioTranscodingProcess != nil {
+			log.Info(ctx, "draining audio transcoding process")
+			// Drain the remaining frames from the transcoder
+			packets, err := audioTranscodingProcess.Drain()
+			if err != nil {
+				log.Error(ctx, err, "failed to drain audio transcoder")
+			}
+			for _, packet := range packets {
+				m.onAudio(ctx, &hub.AACAudio{
+					Data:                  packet.Data,
+					SequenceHeader:        false,
+					MPEG4AudioConfigBytes: m.mpeg4AudioConfigBytes,
+					MPEG4AudioConfig:      m.mpeg4AudioConfig,
+					PTS:                   packet.PTS,
+					DTS:                   packet.DTS,
+					AudioClockRate:        uint32(packet.SampleRate),
+				})
+			}
+			log.Info(ctx, "audio transcoding process drained")
+		} else {
+			log.Info(ctx, "no audio transcoding process to drain")
 		}
-		log.Info(ctx, "mp4 file closed")
 	}()
 	return nil
 }
@@ -153,6 +171,7 @@ func (m *MP4) createNewFile(ctx context.Context) error {
 // closeFile closes the current MP4 file and muxer
 func (m *MP4) closeFile(ctx context.Context) {
 	if m.muxer != nil {
+		log.Info(ctx, "writing mp4 trailer")
 		err := m.muxer.WriteTrailer()
 		if err != nil {
 			log.Error(ctx, err, "failed to write trailer")
@@ -164,6 +183,7 @@ func (m *MP4) closeFile(ctx context.Context) {
 		if err != nil {
 			log.Error(ctx, err, "failed to close mp4 file")
 		}
+		log.Info(ctx, "mp4 file closed")
 		m.tempFile = nil
 	}
 }

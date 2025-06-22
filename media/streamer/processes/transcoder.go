@@ -194,3 +194,63 @@ func (t *AudioTranscodingProcess) Process(data *MediaPacket) ([]*MediaPacket, er
 
 	return opusAudio, nil
 }
+
+func (t *AudioTranscodingProcess) Drain() ([]*MediaPacket, error) {
+	var packets []*MediaPacket
+	ctx := context.Background()
+
+	// 1. Flush Decoder
+	if err := t.decCodecContext.SendPacket(nil); err != nil {
+		log.Error(ctx, err, "failed to send nil packet to decoder for draining")
+		// Continue to encoder flushing
+	}
+
+	frame := astiav.AllocFrame()
+	defer frame.Free()
+
+	for {
+		err := t.decCodecContext.ReceiveFrame(frame)
+		if errors.Is(err, astiav.ErrEof) || errors.Is(err, astiav.ErrEagain) {
+			break
+		}
+		if err != nil {
+			log.Error(ctx, err, "failed to receive frame from decoder during draining")
+			continue
+		}
+
+		if err := t.encCodecContext.SendFrame(frame); err != nil {
+			log.Error(ctx, err, "failed to send flushed frame to encoder")
+		}
+		frame.Unref()
+	}
+
+	// 2. Flush Encoder
+	if err := t.encCodecContext.SendFrame(nil); err != nil {
+		log.Error(ctx, err, "failed to send nil frame to encoder for draining")
+		return packets, err
+	}
+
+	pkt := astiav.AllocPacket()
+	defer pkt.Free()
+
+	for {
+		err := t.encCodecContext.ReceivePacket(pkt)
+		if errors.Is(err, astiav.ErrEof) || errors.Is(err, astiav.ErrEagain) {
+			break
+		}
+		if err != nil {
+			log.Error(ctx, err, "failed to receive packet from encoder during draining")
+			continue
+		}
+
+		packets = append(packets, &MediaPacket{
+			Data:       append([]byte{}, pkt.Data()...),
+			PTS:        pkt.Pts(),
+			DTS:        pkt.Dts(),
+			SampleRate: t.encCodecContext.SampleRate(),
+		})
+		pkt.Unref()
+	}
+
+	return packets, nil
+}

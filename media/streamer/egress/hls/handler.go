@@ -4,8 +4,9 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"liveflow/media/streamer/processes"
 	"time"
+
+	"liveflow/media/streamer/processes"
 
 	"github.com/asticode/go-astiav"
 	"github.com/bluenviron/gohlslib"
@@ -99,9 +100,41 @@ func (h *HLS) Start(ctx context.Context, source hub.Source) error {
 				h.onVideo(ctx, data.H264Video)
 			}
 		}
+		if audioTranscodingProcess != nil {
+			log.Info(ctx, "draining audio transcoding process for HLS")
+			packets, err := audioTranscodingProcess.Drain()
+			if err != nil {
+				log.Error(ctx, err, "failed to drain audio transcoder for HLS")
+			}
+			for _, packet := range packets {
+				h.onAudio(ctx, source, &hub.AACAudio{
+					Data:                  packet.Data,
+					SequenceHeader:        false,
+					MPEG4AudioConfigBytes: h.mpeg4AudioConfigBytes,
+					MPEG4AudioConfig:      h.mpeg4AudioConfig,
+					PTS:                   packet.PTS,
+					DTS:                   packet.DTS,
+					AudioClockRate:        uint32(packet.SampleRate),
+				})
+			}
+			log.Info(ctx, "audio transcoding process for HLS drained")
+		}
 		log.Info(ctx, "[HLS] end of streamID: ", source.StreamID())
+		if h.muxer != nil {
+			h.muxer.Close()
+		}
 	}()
 	return nil
+}
+
+func (h *HLS) onVideo(ctx context.Context, h264Video *hub.H264Video) {
+	if h.muxer != nil {
+		au, _ := h264parser.SplitNALUs(h264Video.Data)
+		err := h.muxer.WriteH264(time.Now(), time.Duration(h264Video.RawDTS())*time.Millisecond, au)
+		if err != nil {
+			log.Errorf(ctx, "failed to write h264: %v", err)
+		}
+	}
 }
 
 func (h *HLS) onAudio(ctx context.Context, source hub.Source, aacAudio *hub.AACAudio) {
@@ -125,17 +158,6 @@ func (h *HLS) onAudio(ctx context.Context, source hub.Source, aacAudio *hub.AACA
 		h.muxer.WriteMPEG4Audio(time.Now(), time.Duration(aacAudio.RawDTS())*time.Millisecond, [][]byte{audioData})
 	}
 }
-
-func (h *HLS) onVideo(ctx context.Context, h264Video *hub.H264Video) {
-	if h.muxer != nil {
-		au, _ := h264parser.SplitNALUs(h264Video.Data)
-		err := h.muxer.WriteH264(time.Now(), time.Duration(h264Video.RawDTS())*time.Millisecond, au)
-		if err != nil {
-			log.Errorf(ctx, "failed to write h264: %v", err)
-		}
-	}
-}
-
 func (h *HLS) onOPUSAudio(ctx context.Context, source hub.Source, audioTranscodingProcess *processes.AudioTranscodingProcess, opusAudio *hub.OPUSAudio) {
 	packets, err := audioTranscodingProcess.Process(&processes.MediaPacket{
 		Data: opusAudio.Data,
