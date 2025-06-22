@@ -15,7 +15,6 @@ import (
 	"liveflow/media/streamer/egress/record/mp4"
 	"liveflow/media/streamer/egress/record/webm"
 	"liveflow/media/streamer/egress/whep"
-	"liveflow/media/streamer/ingress/whip"
 
 	"github.com/labstack/echo/v4"
 	"github.com/labstack/echo/v4/middleware"
@@ -27,7 +26,9 @@ import (
 	"liveflow/log"
 	"liveflow/media/hlshub"
 	"liveflow/media/hub"
+	"liveflow/media/streamer/egress/thumbnail"
 	"liveflow/media/streamer/ingress/rtmp"
+	"liveflow/media/streamer/ingress/whip"
 )
 
 /*
@@ -76,10 +77,12 @@ func main() {
 	tracks = make(map[string][]*webrtc.TrackLocalStaticRTP)
 	// Egress is started by streamID notification
 	hlsHub := hlshub.NewHLSHub()
+	thumbnailStore := thumbnail.NewThumbnailStore()
 	go func() {
 		api := echo.New()
 		api.HideBanner = true
 		hlsHandler := httpsrv.NewHandler(hlsHub)
+		thumbnailHandler := httpsrv.NewThumbnailHandler(thumbnailStore)
 		api.Use(middleware.Logger())
 
 		// 1. API routes
@@ -100,11 +103,17 @@ func main() {
 		})
 		whipServer.RegisterRoute()
 
-		// 2. Serve static files
-		api.Static("/", "front/dist")
+		// Thumbnail routes - simplified without middleware
+		api.GET("/thumbnail/:streamID", thumbnailHandler.HandleThumbnail)
+		api.GET("/thumbnail/:streamID.jpg", thumbnailHandler.HandleThumbnailWithExtension)
 
-		// 3. SPA fallback for all other routes
-		api.GET("/*", func(c echo.Context) error {
+		// 2. Serve static files for specific paths only - avoid wildcard conflicts
+		// api.Static("/static", "front/dist")
+		// Use more specific routes to avoid interfering with API routes
+		api.GET("/assets/*", func(c echo.Context) error {
+			return c.File("front/dist" + c.Request().URL.Path)
+		})
+		api.GET("/", func(c echo.Context) error {
 			return c.File("front/dist/index.html")
 		})
 
@@ -136,6 +145,17 @@ func main() {
 					Hub:             sourceHub,
 					SplitIntervalMS: 6000,
 					StreamID:        source.StreamID(),
+				}))
+			}
+
+			if conf.Thumbnail.Enable {
+				starters = append(starters, thumbnail.NewThumbnail(thumbnail.ThumbnailArgs{
+					Hub:             sourceHub,
+					Store:           thumbnailStore,
+					OutputPath:      conf.Thumbnail.OutputPath,
+					IntervalSeconds: conf.Thumbnail.IntervalSeconds,
+					Width:           conf.Thumbnail.Width,
+					Height:          conf.Thumbnail.Height,
 				}))
 			}
 

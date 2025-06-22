@@ -10,3 +10,10 @@ mode=false
 record=true
 [ebml]
 record=false
+
+[thumbnail]
+enable=true
+output_path="./thumbnails"
+interval_seconds=5
+width=320
+height=180
