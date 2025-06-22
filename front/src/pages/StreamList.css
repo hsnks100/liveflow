@@ -1,0 +1,308 @@
+.stream-list-container {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 2rem;
+  min-height: 100vh;
+  background: var(--primary-gradient);
+  font-family: var(--font-family);
+}
+
+.stream-list-header {
+  text-align: center;
+  margin-bottom: 3rem;
+  color: var(--text-primary);
+}
+
+.stream-list-header h1 {
+  margin: 0 0 0.5rem 0;
+}
+
+.stream-count {
+  opacity: 0.9;
+  margin: 0;
+  font-weight: 400;
+}
+
+.streams-grid {
+  margin-bottom: 2rem;
+}
+
+.stream-card {
+  background: white;
+  border-radius: var(--border-radius);
+  overflow: hidden;
+  box-shadow: var(--shadow-light);
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  text-decoration: none;
+  color: inherit;
+  position: relative;
+  backdrop-filter: blur(10px);
+  border: 1px solid var(--glass-border);
+}
+
+.stream-card:hover {
+  transform: translateY(-8px) scale(1.02);
+  box-shadow: var(--shadow-medium);
+}
+
+.stream-card:active {
+  transform: translateY(-4px) scale(1.01);
+}
+
+.stream-thumbnail {
+  width: 100%;
+  height: 200px;
+  position: relative;
+  overflow: hidden;
+  background: linear-gradient(45deg, #f0f0f0, #e0e0e0);
+}
+
+.stream-thumbnail img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  transition: transform 0.3s ease;
+}
+
+.stream-card:hover .stream-thumbnail img {
+  transform: scale(1.05);
+}
+
+.thumbnail-placeholder {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--primary-gradient);
+  position: relative;
+}
+
+.play-icon {
+  font-size: 3rem;
+  color: white;
+  text-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
+  animation: pulse 2s infinite;
+}
+
+@keyframes pulse {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.05); }
+}
+
+.stream-info {
+  padding: 1.5rem;
+}
+
+.stream-title {
+  font-size: 1.25rem;
+  font-weight: 600;
+  margin: 0 0 0.5rem 0;
+  color: #1f2937;
+  line-height: 1.4;
+}
+
+.stream-status {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.live-indicator {
+  background: var(--live-gradient);
+  color: white;
+  padding: 0.25rem 0.75rem;
+  border-radius: var(--border-radius-large);
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  animation: blink 2s infinite;
+}
+
+@keyframes blink {
+  0%, 50% { opacity: 1; }
+  51%, 100% { opacity: 0.7; }
+}
+
+.loading {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-height: 60vh;
+  color: var(--text-primary);
+}
+
+.loading-spinner {
+  width: 50px;
+  height: 50px;
+  border: 4px solid rgba(255, 255, 255, 0.3);
+  border-top: 4px solid white;
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+  margin-bottom: 1rem;
+}
+
+@keyframes spin {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+
+.loading p {
+  font-size: 1.2rem;
+  margin: 0;
+  opacity: 0.9;
+}
+
+.error {
+  text-align: center;
+  padding: 3rem;
+  background: var(--glass-bg);
+  border-radius: var(--border-radius);
+  color: var(--text-primary);
+  backdrop-filter: blur(10px);
+  border: 1px solid var(--glass-border);
+}
+
+.error h2 {
+  color: #fca5a5;
+  margin-bottom: 1rem;
+  font-size: 2rem;
+}
+
+.error p {
+  margin-bottom: 2rem;
+  font-size: 1.1rem;
+  opacity: 0.9;
+}
+
+.error button {
+  background: var(--button-primary);
+  color: white;
+  border: none;
+  padding: 0.75rem 2rem;
+  border-radius: var(--border-radius-small);
+  font-size: 1rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.3s ease;
+}
+
+.error button:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 16px rgba(59, 130, 246, 0.3);
+}
+
+.empty-state {
+  text-align: center;
+  padding: 4rem 2rem;
+  color: var(--text-primary);
+}
+
+.empty-icon {
+  font-size: 4rem;
+  margin-bottom: 1.5rem;
+  opacity: 0.8;
+}
+
+.empty-state h2 {
+  margin-bottom: 1rem;
+  font-weight: 600;
+}
+
+.empty-state p {
+  font-size: 1.2rem;
+  margin-bottom: 0.5rem;
+  opacity: 0.9;
+  line-height: 1.6;
+}
+
+/* 반응형 디자인 */
+@media (max-width: 768px) {
+  .stream-list-container {
+    padding: 1rem;
+  }
+  
+  .stream-list-header h1 {
+    font-size: 2.5rem;
+  }
+  
+  .streams-grid {
+    grid-template-columns: 1fr;
+    gap: 1.5rem;
+  }
+  
+  .stream-thumbnail {
+    height: 180px;
+  }
+  
+  .empty-state {
+    padding: 3rem 1rem;
+  }
+  
+  .empty-state h2 {
+    font-size: 2rem;
+  }
+}
+
+@media (max-width: 480px) {
+  .stream-list-header h1 {
+    font-size: 2rem;
+  }
+  
+  .stream-count {
+    font-size: 1rem;
+  }
+  
+  .stream-thumbnail {
+    height: 160px;
+  }
+  
+  .stream-info {
+    padding: 1rem;
+  }
+  
+  .stream-title {
+    font-size: 1.1rem;
+  }
+}
+
+/* 다크 모드 지원 */
+@media (prefers-color-scheme: dark) {
+  .stream-card {
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+  }
+  
+  .stream-title {
+    color: #f9fafb;
+  }
+}
+
+/* 접근성 개선 */
+@media (prefers-reduced-motion: reduce) {
+  .stream-card,
+  .stream-thumbnail img,
+  .play-icon,
+  .live-indicator,
+  .loading-spinner {
+    animation: none;
+    transition: none;
+  }
+  
+  .stream-card:hover {
+    transform: none;
+  }
+}
+
+/* 포커스 스타일 */
+.stream-card:focus {
+  outline: 3px solid #3b82f6;
+  outline-offset: 2px;
+}
+
+.error button:focus {
+  outline: 3px solid #60a5fa;
+  outline-offset: 2px;
+} 

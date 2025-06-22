@@ -113,7 +113,10 @@ func main() {
 		api.GET("/assets/*", func(c echo.Context) error {
 			return c.File("front/dist" + c.Request().URL.Path)
 		})
-		api.GET("/", func(c echo.Context) error {
+
+		// SPA fallback - serve index.html for all unmatched routes
+		// This must be registered LAST to act as a catch-all
+		api.GET("/*", func(c echo.Context) error {
 			return c.File("front/dist/index.html")
 		})
 
