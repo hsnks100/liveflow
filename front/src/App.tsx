@@ -6,6 +6,7 @@ import {
 import StreamList from "./pages/StreamList.tsx";
 import Player from "./pages/Player.tsx";
 import './App.css'
+import './styles/common.css'
 
 function App() {
   return (

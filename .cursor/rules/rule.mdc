@@ -1,0 +1,52 @@
+---
+description: 
+globs: 
+alwaysApply: true
+---
+## Constructor Patterns
+
+### Args Structures
+- For complex constructors, use `XXXArgs` struct to group parameters
+
+```go
+type QUICArgs struct {
+    TLSConfig      *tls.Config
+    Bootstrap      *bootstrap.BootstrapAgent
+    StreamManager  *wrtc.StreamManager
+    SessionManager *streamsession.SessionManager
+    RTPRouter      *rtprouter.RTPRouter
+}
+
+func NewQUICAcceptor(config *conf.Config, args QUICArgs) (*QUICAcceptor, error) {
+    // implementation
+}
+```
+
+### Constructor Naming
+- Always use `NewXXX` pattern for constructors
+- Return pointer and error when validation is needed
+- Return pointer only when no validation is required
+
+## Language and Documentation
+
+### Language Requirements
+- **ALL comments, documentation, and messages MUST be in English**
+- Function documentation must be in English
+- Log messages must be in English
+- Error messages must be in English
+- Variable names and function names in English
+
+### Comment Style
+- Write comments only when necessary for clarity or complex logic
+- Avoid obvious comments that just repeat the code
+- Focus on explaining WHY, not WHAT
+- Use concise, clear English
+
+```go
+// ValidateArgs checks if struct fields are nil or invalid interfaces
+func ValidateArgs(args interface{}) error {
+    if !fieldVal.CanInterface() {
+        continue
+    }
+}
+```
