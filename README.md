@@ -56,6 +56,49 @@ The system architecture can be visualized as follows:
    docker-compose up liveflow -d --force-recreate --build
    ```
 
+## Building and Running
+
+There are two ways to run the project: for production and for development.
+
+### For Production
+This method builds the frontend assets and embeds them into a single Go binary.
+
+1.  **Build the frontend:**
+    ```bash
+    cd front
+    npm install
+    npm run build
+    ```
+
+2.  **Build and run the Go application:**
+    ```bash
+    cd .. 
+    go build -o liveflow
+    ./liveflow
+    ```
+
+3.  Access the application at `http://localhost:8044`.
+
+### For Development
+This method runs the Go backend and the Vite frontend development server separately, enabling hot-reloading for frontend changes.
+
+1.  **Run the Go backend server:**
+    Open a terminal and run:
+    ```bash
+    go build -o liveflow
+    ./liveflow
+    ```
+
+2.  **Run the frontend development server:**
+    Open a second terminal and run:
+    ```bash
+    cd front
+    npm install
+    npm run dev
+    ```
+
+3.  Access the application via the address shown by the Vite server (e.g., `http://localhost:5173`).
+
 ## **Usage**
 
 Start streaming by choosing from the following broadcast options:
@@ -72,10 +115,10 @@ Start streaming by choosing from the following broadcast options:
 
 - **HLS:**
     - URL: `http://127.0.0.1:8044/hls/test/master.m3u8`
-    - Viewer: `http://127.0.0.1:8044/m3u8player.html?streamid=test`
+    - Viewer: `http://127.0.0.1:8044/player/test`
 
 - **WHEP:**
-    - URL: `http://127.0.0.1:8044/`
+    - URL: `http://127.0.0.1:8044/wv`
     - Bearer Token: `test`
     - Click the **Subscribe** button.
 

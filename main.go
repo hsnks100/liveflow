@@ -20,7 +20,6 @@ import (
 	"github.com/labstack/echo/v4"
 	"github.com/labstack/echo/v4/middleware"
 	"github.com/pion/webrtc/v3"
-	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/sirupsen/logrus"
 	"github.com/spf13/viper"
 
@@ -81,17 +80,18 @@ func main() {
 		api := echo.New()
 		api.HideBanner = true
 		hlsHandler := httpsrv.NewHandler(hlsHub)
+		api.Use(middleware.Logger())
+
+		// 1. API routes
 		hlsRoute := api.Group("/hls", middleware.CORSWithConfig(middleware.CORSConfig{
 			AllowOrigins: []string{"*"}, // Adjust origins as necessary
 			AllowMethods: []string{http.MethodGet, http.MethodHead, http.MethodOptions},
 		}))
-		api.GET("/prometheus", echo.WrapHandler(promhttp.Handler()))
-		api.GET("/debug/pprof/*", echo.WrapHandler(http.DefaultServeMux))
-		// Enable CORS only for /hls routes
-		hlsRoute.GET("/streams", hlsHandler.HandleListStreams)
 		hlsRoute.GET("/:streamID/master.m3u8", hlsHandler.HandleMasterM3U8)
 		hlsRoute.GET("/:streamID/:playlistName/stream.m3u8", hlsHandler.HandleM3U8)
 		hlsRoute.GET("/:streamID/:playlistName/:resourceName", hlsHandler.HandleM3U8)
+		api.GET("/streams", hlsHandler.HandleListStreams)
+
 		whipServer := whip.NewWHIP(whip.WHIPArgs{
 			Hub:        hub,
 			Tracks:     tracks,
@@ -99,6 +99,15 @@ func main() {
 			Echo:       api,
 		})
 		whipServer.RegisterRoute()
+
+		// 2. Serve static files
+		api.Static("/", "front/dist")
+
+		// 3. SPA fallback for all other routes
+		api.GET("/*", func(c echo.Context) error {
+			return c.File("front/dist/index.html")
+		})
+
 		go func() {
 			fmt.Println("----------------", conf.Service.Port)
 			api.Start("0.0.0.0:" + strconv.Itoa(conf.Service.Port))

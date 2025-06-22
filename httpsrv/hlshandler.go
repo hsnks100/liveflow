@@ -113,6 +113,7 @@ func (h *Handler) HandleM3U8(c echo.Context) error {
 	extension := filepath.Ext(c.Request().URL.String())
 	switch extension {
 	case ".m3u8":
+		c.Response().Header().Set(echo.HeaderContentType, "application/vnd.apple.mpegurl")
 		c.Response().Header().Set(cacheControl, "max-age=1")
 	case ".ts", ".mp4":
 		c.Response().Header().Set(cacheControl, "max-age=3600")
