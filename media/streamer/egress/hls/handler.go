@@ -212,3 +212,7 @@ func (h *HLS) makeMuxer(extraData []byte) (*gohlslib.Muxer, error) {
 	}
 	return muxer, nil
 }
+
+func (h *HLS) Name() string {
+	return "hls-server"
+}

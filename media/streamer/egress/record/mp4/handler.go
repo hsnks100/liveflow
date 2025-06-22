@@ -278,3 +278,7 @@ func (m *MP4) onOPUSAudio(ctx context.Context, audioTranscodingProcess *processe
 		})
 	}
 }
+
+func (m *MP4) Name() string {
+	return "mp4-recorder"
+}

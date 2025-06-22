@@ -236,3 +236,7 @@ func (w *WebM) onAACAudio(ctx context.Context, aac *hub.AACAudio) {
 		})
 	}
 }
+
+func (w *WebM) Name() string {
+	return "webm-recorder"
+}
