@@ -19,6 +19,12 @@ const (
 	cacheControl = "CDN-Cache-Control"
 )
 
+type APIResponse struct {
+	ErrorCode int         `json:"error_code"`
+	Message   string      `json:"message"`
+	Data      interface{} `json:"data,omitempty"`
+}
+
 type Handler struct {
 	endpoint *hlshub.HLSHub
 }
@@ -27,6 +33,19 @@ func NewHandler(hlsEndpoint *hlshub.HLSHub) *Handler {
 	return &Handler{
 		endpoint: hlsEndpoint,
 	}
+}
+
+type StreamsResponse struct {
+	Streams []string `json:"streams"`
+}
+
+func (h *Handler) HandleListStreams(c echo.Context) error {
+	streams := h.endpoint.WorkIDs()
+	return c.JSON(http.StatusOK, APIResponse{
+		ErrorCode: 0,
+		Message:   "success",
+		Data:      StreamsResponse{Streams: streams},
+	})
 }
 
 func (h *Handler) HandleMasterM3U8(c echo.Context) error {
