@@ -9,6 +9,7 @@ import (
 	"github.com/yutopp/go-rtmp"
 
 	"liveflow/log"
+	"liveflow/media/hlshub"
 	"liveflow/media/hub"
 )
 
@@ -20,12 +21,14 @@ type RTMP struct {
 	serverConfig *rtmp.ServerConfig
 	hub          *hub.Hub
 	port         int
+	args         RTMPArgs
 }
 
 type RTMPArgs struct {
 	ServerConfig *rtmp.ServerConfig
 	Hub          *hub.Hub
 	Port         int
+	HLSHub       *hlshub.HLSHub
 }
 
 func NewRTMP(args RTMPArgs) *RTMP {
@@ -33,6 +36,7 @@ func NewRTMP(args RTMPArgs) *RTMP {
 		//serverConfig: args.ServerConfig,
 		hub:  args.Hub,
 		port: args.Port,
+		args: args,
 	}
 }
 
@@ -48,7 +52,8 @@ func (r *RTMP) Serve(ctx context.Context) error {
 	srv := rtmp.NewServer(&rtmp.ServerConfig{
 		OnConnect: func(conn net.Conn) (io.ReadWriteCloser, *rtmp.ConnConfig) {
 			h := &Handler{
-				hub: r.hub,
+				hub:    r.hub,
+				HLSHub: r.args.HLSHub,
 			}
 			return conn, &rtmp.ConnConfig{
 				Handler: h,

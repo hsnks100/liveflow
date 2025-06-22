@@ -18,11 +18,13 @@ import (
 	rtmpmsg "github.com/yutopp/go-rtmp/message"
 
 	"liveflow/log"
+	"liveflow/media/hlshub"
 	"liveflow/media/hub"
 )
 
 type Handler struct {
 	hub      *hub.Hub
+	HLSHub   *hlshub.HLSHub
 	streamID string
 	rtmp.DefaultHandler
 	flvFile *os.File
@@ -358,6 +360,7 @@ func (h *Handler) OnClose() {
 		_ = h.flvFile.Close()
 	}
 	h.hub.Unpublish(h.streamID)
+	h.HLSHub.DeleteMuxer(h.streamID)
 }
 
 func flvSampleRate(soundRate flvtag.SoundRate) uint32 {

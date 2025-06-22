@@ -75,12 +75,11 @@ func main() {
 	hub := hub.NewHub()
 	var tracks map[string][]*webrtc.TrackLocalStaticRTP
 	tracks = make(map[string][]*webrtc.TrackLocalStaticRTP)
-	// ingress
-	// Egress 서비스는 streamID 알림을 구독하여 처리 시작
+	// Egress is started by streamID notification
+	hlsHub := hlshub.NewHLSHub()
 	go func() {
 		api := echo.New()
 		api.HideBanner = true
-		hlsHub := hlshub.NewHLSHub()
 		hlsHandler := httpsrv.NewHandler(hlsHub)
 		hlsRoute := api.Group("/hls", middleware.CORSWithConfig(middleware.CORSConfig{
 			AllowOrigins: []string{"*"}, // Adjust origins as necessary
@@ -89,6 +88,7 @@ func main() {
 		api.GET("/prometheus", echo.WrapHandler(promhttp.Handler()))
 		api.GET("/debug/pprof/*", echo.WrapHandler(http.DefaultServeMux))
 		// Enable CORS only for /hls routes
+		hlsRoute.GET("/streams", hlsHandler.HandleListStreams)
 		hlsRoute.GET("/:streamID/master.m3u8", hlsHandler.HandleMasterM3U8)
 		hlsRoute.GET("/:streamID/:playlistName/stream.m3u8", hlsHandler.HandleM3U8)
 		hlsRoute.GET("/:streamID/:playlistName/:resourceName", hlsHandler.HandleM3U8)
@@ -151,8 +151,9 @@ func main() {
 	}()
 
 	rtmpServer := rtmp.NewRTMP(rtmp.RTMPArgs{
-		Hub:  hub,
-		Port: conf.RTMP.Port,
+		Hub:    hub,
+		Port:   conf.RTMP.Port,
+		HLSHub: hlsHub,
 	})
 	rtmpServer.Serve(ctx)
 }
