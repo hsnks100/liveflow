@@ -1,10 +1,9 @@
 module liveflow
 
-go 1.21
+go 1.23
 
 require (
 	github.com/asticode/go-astiav v0.19.0
-	github.com/asticode/go-astits v1.13.0
 	github.com/at-wat/ebml-go v0.17.1
 	github.com/bluenviron/gohlslib v1.4.0
 	github.com/deepch/vdk v0.0.27
@@ -26,6 +25,7 @@ require (
 require (
 	github.com/abema/go-mp4 v1.2.0 // indirect
 	github.com/asticode/go-astikit v0.43.0 // indirect
+	github.com/asticode/go-astits v1.13.0 // indirect
 	github.com/beorn7/perks v1.0.1 // indirect
 	github.com/bluenviron/mediacommon v1.11.1-0.20240525122142-20163863aa75 // indirect
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect

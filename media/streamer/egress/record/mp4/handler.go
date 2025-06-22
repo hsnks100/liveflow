@@ -118,11 +118,6 @@ func (m *MP4) Start(ctx context.Context, source hub.Source) error {
 				}
 			}
 		}
-		err = m.muxer.WriteTrailer()
-		if err != nil {
-			log.Error(ctx, err, "failed to write trailer")
-		}
-		log.Info(ctx, "mp4 file closed")
 	}()
 	return nil
 }
@@ -153,6 +148,7 @@ func (m *MP4) createNewFile(ctx context.Context) error {
 // closeFile closes the current MP4 file and muxer
 func (m *MP4) closeFile(ctx context.Context) {
 	if m.muxer != nil {
+		log.Info(ctx, "writing mp4 trailer")
 		err := m.muxer.WriteTrailer()
 		if err != nil {
 			log.Error(ctx, err, "failed to write trailer")
@@ -164,6 +160,7 @@ func (m *MP4) closeFile(ctx context.Context) {
 		if err != nil {
 			log.Error(ctx, err, "failed to close mp4 file")
 		}
+		log.Info(ctx, "mp4 file closed")
 		m.tempFile = nil
 	}
 }

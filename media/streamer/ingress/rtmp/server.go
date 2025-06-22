@@ -67,6 +67,10 @@ func (r *RTMP) Serve(ctx context.Context) error {
 		},
 	})
 	log.Info(ctx, "RTMP server started")
+	go func() {
+		<-ctx.Done()
+		srv.Close()
+	}()
 	if err := srv.Serve(listener); err != nil {
 		log.Errorf(ctx, "Failed: %+v", err)
 	}
