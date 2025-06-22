@@ -100,7 +100,29 @@ func (h *HLS) Start(ctx context.Context, source hub.Source) error {
 				h.onVideo(ctx, data.H264Video)
 			}
 		}
+		if audioTranscodingProcess != nil {
+			log.Info(ctx, "draining audio transcoding process for HLS")
+			packets, err := audioTranscodingProcess.Drain()
+			if err != nil {
+				log.Error(ctx, err, "failed to drain audio transcoder for HLS")
+			}
+			for _, packet := range packets {
+				h.onAudio(ctx, source, &hub.AACAudio{
+					Data:                  packet.Data,
+					SequenceHeader:        false,
+					MPEG4AudioConfigBytes: h.mpeg4AudioConfigBytes,
+					MPEG4AudioConfig:      h.mpeg4AudioConfig,
+					PTS:                   packet.PTS,
+					DTS:                   packet.DTS,
+					AudioClockRate:        uint32(packet.SampleRate),
+				})
+			}
+			log.Info(ctx, "audio transcoding process for HLS drained")
+		}
 		log.Info(ctx, "[HLS] end of streamID: ", source.StreamID())
+		if h.muxer != nil {
+			h.muxer.Close()
+		}
 	}()
 	return nil
 }

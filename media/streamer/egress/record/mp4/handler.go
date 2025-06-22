@@ -118,6 +118,29 @@ func (m *MP4) Start(ctx context.Context, source hub.Source) error {
 				}
 			}
 		}
+
+		if audioTranscodingProcess != nil {
+			log.Info(ctx, "draining audio transcoding process")
+			// Drain the remaining frames from the transcoder
+			packets, err := audioTranscodingProcess.Drain()
+			if err != nil {
+				log.Error(ctx, err, "failed to drain audio transcoder")
+			}
+			for _, packet := range packets {
+				m.onAudio(ctx, &hub.AACAudio{
+					Data:                  packet.Data,
+					SequenceHeader:        false,
+					MPEG4AudioConfigBytes: m.mpeg4AudioConfigBytes,
+					MPEG4AudioConfig:      m.mpeg4AudioConfig,
+					PTS:                   packet.PTS,
+					DTS:                   packet.DTS,
+					AudioClockRate:        uint32(packet.SampleRate),
+				})
+			}
+			log.Info(ctx, "audio transcoding process drained")
+		} else {
+			log.Info(ctx, "no audio transcoding process to drain")
+		}
 	}()
 	return nil
 }

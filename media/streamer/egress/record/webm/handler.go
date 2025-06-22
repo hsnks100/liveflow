@@ -99,6 +99,24 @@ func (w *WebM) Start(ctx context.Context, source hub.Source) error {
 				w.onAudio(ctx, data.OPUSAudio)
 			}
 		}
+
+		if w.audioTranscodingProcess != nil {
+			log.Info(ctx, "draining audio transcoding process for WebM")
+			packets, err := w.audioTranscodingProcess.Drain()
+			if err != nil {
+				log.Error(ctx, err, "failed to drain audio transcoder for WebM")
+			}
+			for _, packet := range packets {
+				w.onAudio(ctx, &hub.OPUSAudio{
+					Data:           packet.Data,
+					PTS:            packet.PTS,
+					DTS:            packet.DTS,
+					AudioClockRate: uint32(packet.SampleRate),
+				})
+			}
+			log.Info(ctx, "audio transcoding process for WebM drained")
+		}
+
 		// Ensure the muxer is finalized
 		w.closeMuxer(ctx)
 	}()
