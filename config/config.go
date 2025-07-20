@@ -25,7 +25,8 @@ type DockerConfig struct {
 }
 
 type MP4 struct {
-	Record bool `mapstructure:"record"`
+	Record          bool `mapstructure:"record"`
+	SplitIntervalMS int  `mapstructure:"split_interval_ms"`
 }
 
 type EBML struct {

@@ -139,7 +139,7 @@ func main() {
 			if conf.MP4.Record {
 				starters = append(starters, mp4.NewMP4(mp4.MP4Args{
 					Hub:             sourceHub,
-					SplitIntervalMS: 3000,
+					SplitIntervalMS: int64(conf.MP4.SplitIntervalMS),
 				}))
 			}
 
