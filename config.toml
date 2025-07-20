@@ -8,6 +8,7 @@ disk_ram = true
 mode=false
 [mp4]
 record=true
+split_interval_ms=3000
 [ebml]
 record=false
 
