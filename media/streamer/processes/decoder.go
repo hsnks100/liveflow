@@ -39,11 +39,20 @@ func (v *VideoDecodingProcess) Init() error {
 
 	return nil
 }
+
+// Free releases allocated resources to prevent memory leaks
+func (v *VideoDecodingProcess) Free() {
+	if v.decCodecContext != nil {
+		v.decCodecContext.Free()
+		v.decCodecContext = nil
+	}
+}
+
 func (v *VideoDecodingProcess) Process(data hub.H264Video) ([]*astiav.Frame, error) {
 	// Decode data
 	ctx := context.Background()
 	packet := astiav.AllocPacket()
-	//defer packet.Free()
+	defer packet.Free()
 	err := packet.FromData(data.Data)
 	if err != nil {
 		log.Error(ctx, err, "failed to create packet")
@@ -58,8 +67,10 @@ func (v *VideoDecodingProcess) Process(data hub.H264Video) ([]*astiav.Frame, err
 		err := v.decCodecContext.ReceiveFrame(frame)
 		if errors.Is(err, astiav.ErrEof) {
 			fmt.Println("EOF: ", err.Error())
+			frame.Free() // Free frame when EOF
 			break
 		} else if errors.Is(err, astiav.ErrEagain) {
+			frame.Free() // Free frame when EAGAIN
 			break
 		}
 		frames = append(frames, frame)

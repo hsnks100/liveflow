@@ -118,6 +118,16 @@ func (t *Thumbnail) Start(ctx context.Context, source hub.Source) error {
 
 	sub := t.hub.Subscribe(source.StreamID())
 	go func() {
+		defer func() {
+			// Clean up decoder when goroutine ends
+			if t.decoder != nil {
+				t.decoder.Free()
+			}
+			// Clean up thumbnail when stream ends
+			t.store.Delete(source.StreamID())
+			log.Infof(ctx, "thumbnail cleaned up for stream %s", source.StreamID())
+		}()
+
 		intervalMS := int64(t.intervalSeconds * 1000)
 
 		for data := range sub {
@@ -140,10 +150,6 @@ func (t *Thumbnail) Start(ctx context.Context, source hub.Source) error {
 				}
 			}
 		}
-
-		// Clean up thumbnail when stream ends
-		t.store.Delete(source.StreamID())
-		log.Infof(ctx, "thumbnail cleaned up for stream %s", source.StreamID())
 	}()
 
 	return nil
@@ -178,6 +184,7 @@ func (t *Thumbnail) onVideo(ctx context.Context, h264Video *hub.H264Video, strea
 	for _, frame := range frames {
 		if frame != nil {
 			t.generateThumbnail(ctx, frame, streamID)
+			frame.Free()
 			// Only generate one thumbnail per interval
 			break
 		}
@@ -224,6 +231,10 @@ func (t *Thumbnail) Name() string {
 
 // Stop stops the thumbnail service
 func (t *Thumbnail) Stop() error {
-	// TODO: implement cleanup logic
+	// Clean up decoder resources
+	if t.decoder != nil {
+		t.decoder.Free()
+		t.decoder = nil
+	}
 	return nil
 }
