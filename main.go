@@ -4,7 +4,7 @@ import (
 	"context"
 	"fmt"
 	"net/http"
-	_ "net/http/pprof" // pprof을 사용하기 위한 패키지
+	"net/http/pprof"
 	"os"
 	"os/signal"
 	"strconv"
@@ -106,6 +106,20 @@ func main() {
 		// Thumbnail routes - simplified without middleware
 		api.GET("/thumbnail/:streamID", thumbnailHandler.HandleThumbnail)
 		api.GET("/thumbnail/:streamID.jpg", thumbnailHandler.HandleThumbnailWithExtension)
+
+		// pprof routes
+		pprofGroup := api.Group("/debug/pprof")
+		pprofGroup.GET("/", echo.WrapHandler(http.HandlerFunc(pprof.Index)))
+		pprofGroup.GET("/cmdline", echo.WrapHandler(http.HandlerFunc(pprof.Cmdline)))
+		pprofGroup.GET("/profile", echo.WrapHandler(http.HandlerFunc(pprof.Profile)))
+		pprofGroup.GET("/symbol", echo.WrapHandler(http.HandlerFunc(pprof.Symbol)))
+		pprofGroup.GET("/trace", echo.WrapHandler(http.HandlerFunc(pprof.Trace)))
+		pprofGroup.GET("/allocs", echo.WrapHandler(pprof.Handler("allocs")))
+		pprofGroup.GET("/block", echo.WrapHandler(pprof.Handler("block")))
+		pprofGroup.GET("/goroutine", echo.WrapHandler(pprof.Handler("goroutine")))
+		pprofGroup.GET("/heap", echo.WrapHandler(pprof.Handler("heap")))
+		pprofGroup.GET("/mutex", echo.WrapHandler(pprof.Handler("mutex")))
+		pprofGroup.GET("/threadcreate", echo.WrapHandler(pprof.Handler("threadcreate")))
 
 		// 2. Serve static files for specific paths only - avoid wildcard conflicts
 		// api.Static("/static", "front/dist")
